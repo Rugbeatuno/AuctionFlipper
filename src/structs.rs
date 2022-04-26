@@ -5,6 +5,9 @@ use serde_derive::{Serialize, Deserialize};
 use crate::utils;
 use std::collections::HashMap;
 
+extern crate colored;
+use colored::*;
+
 
 // Auction structs
 #[derive(Clone)]
@@ -53,13 +56,13 @@ pub struct Flip {
 
 impl Flip {
     pub fn print(&self) {
-        println!("Item: {}", self.lowest_bin.name);
-        println!("Flip: {}", utils::prettify_large_nums(self.flip_price));
-        println!("Profit: {}%", self.profit_percentage);
-        println!("Price: {}", utils::prettify_large_nums(self.lowest_bin.price.try_into().unwrap()));
-        println!("Est. Raw Price: {}", utils::prettify_large_nums(self.raw_price.try_into().unwrap()));
-        println!("Volume: {}", self.volume);
-        println!("Sales Last Hour: {}", self.last_hour_volume);
+        println!("Item: {}", self.lowest_bin.name.underline());
+        println!("Flip: {}", utils::prettify_large_nums(self.flip_price).green());
+        println!("Profit: {}%", self.profit_percentage.to_string().green());
+        println!("Price: {}", utils::prettify_large_nums(self.lowest_bin.price.try_into().unwrap()).yellow());
+        println!("Est. Raw Price: {}", utils::prettify_large_nums(self.raw_price.try_into().unwrap()).yellow());
+        println!("Volume: {}", self.volume.to_string().cyan());
+        println!("Sales Last Hour: {}", self.last_hour_volume.to_string().cyan());
         println!("Cmd: /viewauction {}", self.lowest_bin.uuid);
         println!("")
     }

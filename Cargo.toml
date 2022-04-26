@@ -19,6 +19,7 @@ base64 = "0.13.0"
 hematite-nbt = "0.5.2"
 chrono = { version = "0.4.19", features = ["serde"] }
 cli-clipboard = "0.2.1"
+colored = "2.0.0"
 
 
 [profile.release]
