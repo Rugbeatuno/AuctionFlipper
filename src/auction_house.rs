@@ -171,7 +171,7 @@ fn calc_additional_price(nbt: &structs::PartialNbtElement) -> Option<structs::Pr
 }
 
 fn process_page(req: serde_json::Value) -> Vec<structs::Auction> {
-    const BLACKLISTED_ITEMS: [&str; 46] = ["Undead Bow", "null", "Training Dummy", "Midas Staff", "Bingo Card", "Null", "Hardened Diamond", "Shiny", "Maxor's", "Emerald Armor", "Ember Rod", "Super Heavy", "Holy Dragon", "Very Wise", "Odd Conjuring", "Stereo Pants", "Miner Helment", "Miner Chestplate", "Miner Leggings", "Miner Boots", "Shrimp the Fish", "Corleonite", "Young Dragon", "Unstable Dragon", "Old Dragon", "Protector Dragon", "Potion", "Skeleton Lord Helmet", "Bedrock", "Midas\" Sword", "Repelling Candle", "Cake Soul", "Wild Strawberry Dye", "Tuxedo", "Shrub", "Anvil", "Perfect Helmet", "Perfect Chestplate", "Perfect Leggings", "Perfect Boots", "Rune", "Horse Armor", "Flame Ring", "Cobblestone Wall", "Crab Hat of Celebration", "Map"];
+    const BLACKLISTED_ITEMS: [&str; 46] = ["Undead Bow", "null", "Training Dummy", "Midas Staff", "Bingo Card", "Null", "Hardened Diamond", "Shiny", "Maxor's", "Emerald Armor", "Ember Rod", "Super Heavy", "Holy Dragon", "Very Wise", "Odd Conjuring", "Stereo Pants", "Miner Helment", "Miner Chestplate", "Miner Leggings", "Miner Boots", "Shrimp the Fish", "Corleonite", "Young Dragon", "Unstable Dragon", "Old Dragon", "Protector Dragon", "Potion", "Skeleton Lord Helmet", "Bedrock", "Midas' Sword", "Repelling Candle", "Cake Soul", "Wild Strawberry Dye", "Tuxedo", "Shrub", "Anvil", "Perfect Helmet", "Perfect Chestplate", "Perfect Leggings", "Perfect Boots", "Rune", "Horse Armor", "Flame Ring", "Cobblestone Wall", "Crab Hat of Celebration", "Map"];
 
     let mut filtered_auctions: Vec<structs::Auction> = Vec::new();
 
@@ -276,7 +276,7 @@ async fn fetch(url: String) -> serde_json::Value{
 
 // Find flips that fit criteria and write those to JSON for future use.
 fn find_flips(auctions: &HashMap<String, Vec<structs::Auction>>) {
-    let min_profit = 300_000;
+    let min_profit = 500_000;
     let min_profit_percentage = 15;
     let min_volume = 3;
     // let max_bid = 100_000_000;
@@ -291,8 +291,7 @@ fn find_flips(auctions: &HashMap<String, Vec<structs::Auction>>) {
     if fs::metadata("./src/sales.json").unwrap().len() != 0 {
         load_json = serde_json::from_str(&data).unwrap();
     }
-
-    for (_name, auc) in auctions.iter() {
+    for (item_name, auc) in auctions.iter() {
         let mut auc = auc.clone();
         auc.sort_by_key(|f| f.price.clone());
 
@@ -308,7 +307,17 @@ fn find_flips(auctions: &HashMap<String, Vec<structs::Auction>>) {
         // let tax = lowest_price * 0.01 + next_lowest * 0.02;
         if next_lowest_price < lowest_price {continue;}
         let flip_price: u64 = (next_lowest_price - lowest_price).try_into().unwrap();
-        let additional_costs: u64 = additional_costs(&auctions, &auc[1].additional_price_data);
+        let additional_costs = additional_costs(&auctions, &auc[1].additional_price_data);
+
+        let mut avg_raw_price = 0;
+        if load_json.contains_key(item_name) {
+            let prices = load_json.get(item_name).unwrap();
+            let mut sum = 0;
+            for p in prices {
+                sum += p.price;
+            }
+            avg_raw_price = sum / (prices.len() as u64);
+        }
 
         let flip = structs::Flip {
             flip_price: flip_price.try_into().unwrap(),
@@ -321,8 +330,13 @@ fn find_flips(auctions: &HashMap<String, Vec<structs::Auction>>) {
                 None => 0,
             },
             raw_price: if auc[0].price > additional_costs {auc[0].price - additional_costs} else {auc[0].price},
+            avg_raw_price: avg_raw_price,
             // raw_price: 0,
         };
+
+        if flip.raw_price > avg_raw_price {
+            continue;
+        }
 
         // If the seller is me
         if flip.lowest_bin.seller == "1d7a1fd3350546efa653389dfa00ea85" {
@@ -342,25 +356,24 @@ fn find_flips(auctions: &HashMap<String, Vec<structs::Auction>>) {
     // Otherwise, check if there is a huge amount of volume on any items
     // If not, recommend the largest flip
     // possible_flips.sort_by_key(|f| f.flip_price.clone());
-    if possible_flips.len() > 0 {
-        if possible_flips[possible_flips.len()-1].flip_price < 3_000_000 {
-            possible_flips.sort_by_key(|f| f.volume.clone());
-            if possible_flips.len() > 0 && possible_flips[possible_flips.len()-1].volume > 70 {
-                open_auction(&possible_flips);
-            }
-            else {
-                possible_flips.sort_by_key(|f| f.profit_percentage.clone());
-                open_auction(&possible_flips);
-
-            }
-        }
+    if possible_flips.len() == 0 {
+        return;
     }
 
+    possible_flips.sort_by_key(|f| f.profit_percentage.clone());
+    if possible_flips[possible_flips.len()-1].flip_price < 3_000_000 {
+        possible_flips.sort_by_key(|f| f.volume.clone());
+        if possible_flips.len() > 0 && possible_flips[possible_flips.len()-1].volume > 70 {
+            open_auction(&possible_flips);
+        }
+        else {
+            possible_flips.sort_by_key(|f| f.profit_percentage.clone());
+            open_auction(&possible_flips);
 
-    
-
-    
+        }
+    }
     open_auction(&possible_flips);
+
     for flip in possible_flips {
         flip.print();
     }
@@ -380,18 +393,20 @@ pub async fn update_auctions() {
     println!("All async requests sent! ({} pages)", total_pages);
     let now = Instant::now();
     
-
     // Process page zero since it was already fetched to get totalPages
     for auction in process_page(page_0) {
         auctions_hashed.entry(auction.id.clone()).or_default().push(auction);
     }
+    let mut total = 0;
     while let Some(res) = futures.next().await {
         let page = process_page(res);
+        total += page.len();
         for auction in page {
             
             auctions_hashed.entry(auction.id.clone()).or_default().push(auction);
         }
     }
+    println!("TOTAL ITEMS: {}", total);
   
     find_flips(&auctions_hashed);
     println!("All async requests returned! {:?} ({} auctions)", now.elapsed(), auctions_hashed.len());
@@ -535,3 +550,4 @@ fn open_auction(flips: &Vec<structs::Flip>) {
         assert_eq!(cli_clipboard::get_contents().unwrap(), cmd);
     }
 }
+

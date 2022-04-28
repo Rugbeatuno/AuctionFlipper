@@ -52,15 +52,19 @@ pub struct Flip {
     pub volume: usize,
     pub last_hour_volume: usize,
     pub raw_price: u64,
+    pub avg_raw_price: u64,
 }
 
 impl Flip {
     pub fn print(&self) {
+        let raw_price = utils::prettify_large_nums(self.raw_price.try_into().unwrap());
+        let est_raw_price = utils::prettify_large_nums(self.avg_raw_price.try_into().unwrap());
+
         println!("Item: {}", self.lowest_bin.name.underline());
         println!("Flip: {}", utils::prettify_large_nums(self.flip_price).green());
         println!("Profit: {}%", self.profit_percentage.to_string().green());
         println!("Price: {}", utils::prettify_large_nums(self.lowest_bin.price.try_into().unwrap()).yellow());
-        println!("Est. Raw Price: {}", utils::prettify_large_nums(self.raw_price.try_into().unwrap()).yellow());
+        println!("Est. Raw Price: {} < {}", raw_price.green(), est_raw_price.green());
         println!("Volume: {}", self.volume.to_string().cyan());
         println!("Sales Last Hour: {}", self.last_hour_volume.to_string().cyan());
         println!("Cmd: /viewauction {}", self.lowest_bin.uuid);
@@ -83,7 +87,7 @@ pub struct Sale {
     pub data: SaleData,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SaleData {
     pub price: u64,
     pub timestamp: u64,

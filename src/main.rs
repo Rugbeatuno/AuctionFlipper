@@ -32,8 +32,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if next_update == 0 && dt.second() == 59 || next_update == unix_timestamp {
             // utils::get_duration_until_api_update().await;
             auction_house::update_auctions().await;
-            next_update = utils::get_duration_until_api_update().await;
             auction_house::update_auctions_ended().await;
+            next_update = utils::get_duration_until_api_update().await;
         }
     }
     Ok(())
