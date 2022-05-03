@@ -55,15 +55,15 @@ fn to_nbt(item_bytes: structs::ItemBytes) -> Result<structs::PartialNbt, Box<dyn
 
 
 fn is_pet(nbt: &structs::PartialNbtElement, name: String) -> Option<structs::Pet> {
-    if nbt.tag.extra_attributes.petInfo.is_none() {
+    if nbt.tag.extra_attributes.pet_info.is_none() {
         return None;
     }
 
     // Is a pet
-    let res = serde_json::from_str(&nbt.tag.extra_attributes.petInfo.as_ref().unwrap());
+    let res = serde_json::from_str(&nbt.tag.extra_attributes.pet_info.as_ref().unwrap());
     let json: serde_json::Value = res.unwrap();
 
-    let mut level = 1;
+    let level;
     if name == "" {
         let exp = json["exp"].as_f64().unwrap() as u64;
         level = calc_pet_level(exp, json["tier"].as_str().unwrap().to_string());
@@ -171,7 +171,7 @@ fn calc_additional_price(nbt: &structs::PartialNbtElement) -> Option<structs::Pr
 }
 
 fn process_page(req: serde_json::Value) -> Vec<structs::Auction> {
-    const BLACKLISTED_ITEMS: [&str; 46] = ["Undead Bow", "null", "Training Dummy", "Midas Staff", "Bingo Card", "Null", "Hardened Diamond", "Shiny", "Maxor's", "Emerald Armor", "Ember Rod", "Super Heavy", "Holy Dragon", "Very Wise", "Odd Conjuring", "Stereo Pants", "Miner Helment", "Miner Chestplate", "Miner Leggings", "Miner Boots", "Shrimp the Fish", "Corleonite", "Young Dragon", "Unstable Dragon", "Old Dragon", "Protector Dragon", "Potion", "Skeleton Lord Helmet", "Bedrock", "Midas' Sword", "Repelling Candle", "Cake Soul", "Wild Strawberry Dye", "Tuxedo", "Shrub", "Anvil", "Perfect Helmet", "Perfect Chestplate", "Perfect Leggings", "Perfect Boots", "Rune", "Horse Armor", "Flame Ring", "Cobblestone Wall", "Crab Hat of Celebration", "Map"];
+    const BLACKLISTED_ITEMS: [&str; 47] = ["Decoy", "Undead Bow", "null", "Training Dummy", "Midas Staff", "Bingo Card", "Null", "Hardened Diamond", "Shiny", "Maxor's", "Emerald Armor", "Ember Rod", "Super Heavy", "Holy Dragon", "Very Wise", "Odd Conjuring", "Stereo Pants", "Miner Helment", "Miner Chestplate", "Miner Leggings", "Miner Boots", "Shrimp the Fish", "Corleonite", "Young Dragon", "Unstable Dragon", "Old Dragon", "Protector Dragon", "Potion", "Skeleton Lord Helmet", "Bedrock", "Midas' Sword", "Repelling Candle", "Cake Soul", "Wild Strawberry Dye", "Tuxedo", "Shrub", "Anvil", "Perfect Helmet", "Perfect Chestplate", "Perfect Leggings", "Perfect Boots", "Rune", "Horse Armor", "Flame Ring", "Cobblestone Wall", "Crab Hat of Celebration", "Map"];
 
     let mut filtered_auctions: Vec<structs::Auction> = Vec::new();
 
@@ -306,7 +306,11 @@ fn find_flips(auctions: &HashMap<String, Vec<structs::Auction>>) {
 
         // let tax = lowest_price * 0.01 + next_lowest * 0.02;
         if next_lowest_price < lowest_price {continue;}
-        let flip_price: u64 = (next_lowest_price - lowest_price).try_into().unwrap();
+        
+        let mut flip_price: u64 = (next_lowest_price - lowest_price).try_into().unwrap();
+        let taxes = (flip_price as f64 * 0.02 + lowest_price as f64 * 0.01) as u64;
+        flip_price = if taxes < flip_price {flip_price-taxes} else {flip_price};
+
         let additional_costs = additional_costs(&auctions, &auc[1].additional_price_data);
 
         let mut avg_raw_price = 0;
@@ -372,6 +376,7 @@ fn find_flips(auctions: &HashMap<String, Vec<structs::Auction>>) {
 
         }
     }
+    update_flips(&possible_flips);
     open_auction(&possible_flips);
 
     for flip in possible_flips {
@@ -397,16 +402,12 @@ pub async fn update_auctions() {
     for auction in process_page(page_0) {
         auctions_hashed.entry(auction.id.clone()).or_default().push(auction);
     }
-    let mut total = 0;
     while let Some(res) = futures.next().await {
         let page = process_page(res);
-        total += page.len();
         for auction in page {
-            
             auctions_hashed.entry(auction.id.clone()).or_default().push(auction);
         }
     }
-    println!("TOTAL ITEMS: {}", total);
   
     find_flips(&auctions_hashed);
     println!("All async requests returned! {:?} ({} auctions)", now.elapsed(), auctions_hashed.len());
@@ -483,6 +484,12 @@ pub async fn update_auctions_ended() {
 
 
     
+}
+
+fn update_flips(flips: &Vec<structs::Flip>) {
+    let file: String = String::from("./src/flips.json");
+    let json: String = serde_json::to_string(flips).unwrap();
+    fs::write(file, &json).expect("Unable to write file");
 }
 
 fn get_item_bins(auctions: &HashMap<String, Vec<structs::Auction>>, item_id: String) -> Vec<structs::Auction> {

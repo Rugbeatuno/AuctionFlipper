@@ -10,7 +10,7 @@ use colored::*;
 
 
 // Auction structs
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Auction {
     pub id: String,
     pub seller: String,
@@ -26,7 +26,7 @@ pub struct Auction {
     // last_update: u64,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct PriceData {
     pub recombed: u64,
     pub hpb: u64,
@@ -43,7 +43,7 @@ pub struct PriceData {
 // // let tax = lowest_price * 0.01 + next_lowest * 0.02;
 // let lowest_bin = &auc[find_flip_by_price(auc, lowest_price)];
 // let next_lowest_bin = &auc[find_flip_by_price(auc, next_lowest_price)];
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Flip {
     pub flip_price: usize,
     pub profit_percentage: usize,  // not in decimal x100
@@ -60,7 +60,15 @@ impl Flip {
         let raw_price = utils::prettify_large_nums(self.raw_price.try_into().unwrap());
         let est_raw_price = utils::prettify_large_nums(self.avg_raw_price.try_into().unwrap());
 
-        println!("Item: {}", self.lowest_bin.name.underline());
+        // This means that this flip would cause you to flip the item then more than it is normally worth
+        // Could mean over bidding - indicated by red
+        // if self.lowest_bin.price + self.flip_price as u64 > self.avg_raw_price {
+        if self.flip_price as u64 > self.avg_raw_price {
+            println!("Item: {}", self.lowest_bin.name.underline().red());
+        }
+        else {
+            println!("Item: {}", self.lowest_bin.name.underline().green());
+        }
         println!("Flip: {}", utils::prettify_large_nums(self.flip_price).green());
         println!("Profit: {}%", self.profit_percentage.to_string().green());
         println!("Price: {}", utils::prettify_large_nums(self.lowest_bin.price.try_into().unwrap()).yellow());
@@ -121,7 +129,7 @@ pub struct PartialTag {
 #[derive(Deserialize)]
 pub struct PartialExtraAttr {
     #[serde(rename = "petInfo")]
-    pub petInfo: Option<String>,
+    pub pet_info: Option<String>,
     pub id: Option<String>,
     pub enchantments: Option<HashMap<String, i32>>,
     pub modifier: Option<String>,
