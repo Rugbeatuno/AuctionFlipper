@@ -15,15 +15,16 @@ use warp::{Filter, Rejection};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let web = tokio::spawn(async {
+        let get_items = warp::get()
+        .and(warp::path("flips"))
+        .and(warp::path("get"))
+        .and(warp::path::end())
+        .and_then(get_flips);
     
-    let get_items = warp::get()
-    .and(warp::path("flips"))
-    .and(warp::path("get"))
-    .and(warp::path::end())
-    .and_then(get_flips);
-
-    let routes = get_items;
-    warp::serve(routes).run(([127, 0, 0, 1], 5000)).await;
+        let routes = get_items;
+        warp::serve(routes).run(([127, 0, 0, 1], 5000)).await;
+    });
 
 
 
@@ -47,7 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn get_flips() -> Result<impl warp::Reply, warp::Rejection> {
-    let file: String = String::from("./src/sales.json");
+    let file: String = String::from("./src/flips.json");
 
     let data = fs::read_to_string(&file).expect("Unable to read file");
 
