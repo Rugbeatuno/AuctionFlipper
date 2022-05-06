@@ -45,6 +45,8 @@ extern crate json;
 // "bin": true,
 // "bids": [],
 // "item_uuid": "2058c2cbf3954cd783f762bbecdb90d5"
+const BLACKLISTED_ITEMS: [&str; 47] = ["Decoy", "Undead Bow", "null", "Training Dummy", "Midas Staff", "Bingo Card", "Null", "Hardened Diamond", "Shiny", "Maxor's", "Emerald Armor", "Ember Rod", "Super Heavy", "Holy Dragon", "Very Wise", "Odd Conjuring", "Stereo Pants", "Miner Helment", "Miner Chestplate", "Miner Leggings", "Miner Boots", "Shrimp the Fish", "Corleonite", "Young Dragon", "Unstable Dragon", "Old Dragon", "Protector Dragon", "Potion", "Skeleton Lord Helmet", "Bedrock", "Midas' Sword", "Repelling Candle", "Cake Soul", "Wild Strawberry Dye", "Tuxedo", "Shrub", "Anvil", "Perfect Helmet", "Perfect Chestplate", "Perfect Leggings", "Perfect Boots", "Rune", "Horse Armor", "Flame Ring", "Cobblestone Wall", "Crab Hat of Celebration", "Map"];
+const SECONDS_IN_WEEK: u64 = 604_800;
 
 
 fn to_nbt(item_bytes: structs::ItemBytes) -> Result<structs::PartialNbt, Box<dyn std::error::Error>> {
@@ -171,7 +173,7 @@ fn calc_additional_price(nbt: &structs::PartialNbtElement) -> Option<structs::Pr
 }
 
 fn process_page(req: serde_json::Value) -> Vec<structs::Auction> {
-    const BLACKLISTED_ITEMS: [&str; 47] = ["Decoy", "Undead Bow", "null", "Training Dummy", "Midas Staff", "Bingo Card", "Null", "Hardened Diamond", "Shiny", "Maxor's", "Emerald Armor", "Ember Rod", "Super Heavy", "Holy Dragon", "Very Wise", "Odd Conjuring", "Stereo Pants", "Miner Helment", "Miner Chestplate", "Miner Leggings", "Miner Boots", "Shrimp the Fish", "Corleonite", "Young Dragon", "Unstable Dragon", "Old Dragon", "Protector Dragon", "Potion", "Skeleton Lord Helmet", "Bedrock", "Midas' Sword", "Repelling Candle", "Cake Soul", "Wild Strawberry Dye", "Tuxedo", "Shrub", "Anvil", "Perfect Helmet", "Perfect Chestplate", "Perfect Leggings", "Perfect Boots", "Rune", "Horse Armor", "Flame Ring", "Cobblestone Wall", "Crab Hat of Celebration", "Map"];
+    let s = Instant::now();
 
     let mut filtered_auctions: Vec<structs::Auction> = Vec::new();
 
@@ -254,6 +256,7 @@ fn process_page(req: serde_json::Value) -> Vec<structs::Auction> {
     else {
         println!("Page failed!");
     }
+    println!("{:?}", s.elapsed());
     filtered_auctions
 }
 
@@ -558,11 +561,10 @@ fn update_json(new_sales: Vec<structs::Sale>) {
 
 
 pub async fn remove_expired_sales() {
-    let seconds_in_week = 604_800;
-    let unix_timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let unix_timestamp: u64 = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
 
     let file: String = String::from("./src/sales.json");
-    let data = fs::read_to_string(&file).expect("Unable to read file");
+    let data: String = fs::read_to_string(&file).expect("Unable to read file");
 
     let mut load_json: HashMap<String, Vec<structs::SaleData>> = HashMap::new();
     if fs::metadata(&file).unwrap().len() != 0 {
@@ -571,7 +573,7 @@ pub async fn remove_expired_sales() {
     // Sale is stored where each sale is a HashMap stored in a Vec (Some idiot)
     for key in load_json.clone().keys() {
         for _ in load_json.clone().get(key) {// [ [{}] ]
-            load_json.get_mut(key).unwrap().retain(|sale| unix_timestamp - &sale.timestamp > seconds_in_week);
+            load_json.get_mut(key).unwrap().retain(|sale| unix_timestamp - &sale.timestamp > SECONDS_IN_WEEK);
         }
     }
     let json: String = serde_json::to_string(&load_json).unwrap();
