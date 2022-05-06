@@ -7,15 +7,14 @@ use chrono::*;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::fs;
 
-use std::collections::HashMap;
 
-use warp::{Filter, Rejection};
+use warp::{Filter};
 
 
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let web = tokio::spawn(async {
+    let _web = tokio::spawn(async {
         let get_items = warp::get()
         .and(warp::path("flips"))
         .and(warp::path("get"))
@@ -39,6 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // utils::get_duration_until_api_update().await;
             auction_house::update_auctions().await;
             auction_house::update_auctions_ended().await;
+            auction_house::remove_expired_sales().await;
             next_update = utils::get_duration_until_api_update().await;
             holder += 1;
 

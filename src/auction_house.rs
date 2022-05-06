@@ -300,9 +300,13 @@ fn find_flips(auctions: &HashMap<String, Vec<structs::Auction>>) {
             continue;
         }
 
-        let lowest_price: u64 = auc[0].price;
+        let mut lowest_price: u64 = auc[0].price;
         let next_lowest_price: u64 = auc[1].price;
 
+        // Guard condition
+        if lowest_price == 0 {
+            lowest_price = 1;
+        }
 
         // let tax = lowest_price * 0.01 + next_lowest * 0.02;
         if next_lowest_price < lowest_price {continue;}
@@ -313,14 +317,18 @@ fn find_flips(auctions: &HashMap<String, Vec<structs::Auction>>) {
 
         let additional_costs = additional_costs(&auctions, &auc[1].additional_price_data);
 
+
+        // Calculating avg raw price
         let mut avg_raw_price = 0;
         if load_json.contains_key(item_name) {
             let prices = load_json.get(item_name).unwrap();
-            let mut sum = 0;
-            for p in prices {
-                sum += p.price;
+            if prices.len() != 0 {
+                let mut sum = 0;
+                for p in prices {
+                    sum += p.price;
+                }
+                avg_raw_price = sum / (prices.len() as u64);
             }
-            avg_raw_price = sum / (prices.len() as u64);
         }
 
         let flip = structs::Flip {
@@ -546,6 +554,30 @@ fn update_json(new_sales: Vec<structs::Sale>) {
     fs::write(file, &json).expect("Unable to write file");
 }
 
+
+
+
+pub async fn remove_expired_sales() {
+    let seconds_in_week = 604_800;
+    let unix_timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+
+    let file: String = String::from("./src/sales.json");
+    let data = fs::read_to_string(&file).expect("Unable to read file");
+
+    let mut load_json: HashMap<String, Vec<structs::SaleData>> = HashMap::new();
+    if fs::metadata(&file).unwrap().len() != 0 {
+        load_json = serde_json::from_str(&data).unwrap();
+    }
+    // Sale is stored where each sale is a HashMap stored in a Vec (Some idiot)
+    for key in load_json.clone().keys() {
+        for _ in load_json.clone().get(key) {// [ [{}] ]
+            load_json.get_mut(key).unwrap().retain(|sale| unix_timestamp - &sale.timestamp > seconds_in_week);
+        }
+    }
+    let json: String = serde_json::to_string(&load_json).unwrap();
+
+    fs::write(file, &json).expect("Unable to write file");
+}
 
 fn open_auction(flips: &Vec<structs::Flip>) {
     if flips.len() > 0 {
