@@ -5,7 +5,7 @@ extern crate surf;
 
 lazy_static! {
     pub static ref HTTP_CLIENT1: surf::Client = surf::Config::new()
-    .set_timeout(Some(Duration::from_secs(15)))
+    .set_timeout(Some(Duration::from_secs(70)))
     .try_into()
     .unwrap();
     

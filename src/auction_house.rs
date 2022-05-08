@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::iter::Iterator;
 use std::fs;
 
-use crate::structs;
+use crate::structs::*;
 use crate::constants;
 
 use std::{result::Result as StdResult};
@@ -45,18 +45,23 @@ extern crate json;
 // "bin": true,
 // "bids": [],
 // "item_uuid": "2058c2cbf3954cd783f762bbecdb90d5"
-const BLACKLISTED_ITEMS: [&str; 47] = ["Decoy", "Undead Bow", "null", "Training Dummy", "Midas Staff", "Bingo Card", "Null", "Hardened Diamond", "Shiny", "Maxor's", "Emerald Armor", "Ember Rod", "Super Heavy", "Holy Dragon", "Very Wise", "Odd Conjuring", "Stereo Pants", "Miner Helment", "Miner Chestplate", "Miner Leggings", "Miner Boots", "Shrimp the Fish", "Corleonite", "Young Dragon", "Unstable Dragon", "Old Dragon", "Protector Dragon", "Potion", "Skeleton Lord Helmet", "Bedrock", "Midas' Sword", "Repelling Candle", "Cake Soul", "Wild Strawberry Dye", "Tuxedo", "Shrub", "Anvil", "Perfect Helmet", "Perfect Chestplate", "Perfect Leggings", "Perfect Boots", "Rune", "Horse Armor", "Flame Ring", "Cobblestone Wall", "Crab Hat of Celebration", "Map"];
+const BLACKLISTED_ITEMS: [&str; 59] = ["Gift the Fish", "Spooky Pie", "Spirit Leap", "Beach Ball", "Kat Flower", "Endstone Rose", "Teleport Pad", "Plumber's Sponge", "Block of", "Superboom TNT", "Budget Hopper", "Trap", "Decoy", "Undead Bow", "null", "Training Dummy", "Midas Staff", "Bingo Card", "Null", "Hardened Diamond", "Shiny", "Maxor's", "Emerald Armor", "Ember Rod", "Super Heavy", "Holy Dragon", "Very Wise", "Odd Conjuring", "Stereo Pants", "Miner Helment", "Miner Chestplate", "Miner Leggings", "Miner Boots", "Shrimp the Fish", "Corleonite", "Young Dragon", "Unstable Dragon", "Old Dragon", "Protector Dragon", "Potion", "Skeleton Lord Helmet", "Bedrock", "Midas' Sword", "Repelling Candle", "Cake Soul", "Wild Strawberry Dye", "Tuxedo", "Shrub", "Anvil", "Perfect Helmet", "Perfect Chestplate", "Perfect Leggings", "Perfect Boots", "Rune", "Horse Armor", "Flame Ring", "Cobblestone Wall", "Crab Hat of Celebration", "Map"];
 const SECONDS_IN_WEEK: u64 = 604_800;
+const IGNORE_AUCTION_MIN: u64 = 7;
+
+const PATH_TO_CONVERSIONS: &str = "./src/id_conversions.json";
+const PATH_TO_FLIPS: &str = "./src/flips.json";
+const PATH_TO_SALES: &str = "./src/sales.json";
 
 
-fn to_nbt(item_bytes: structs::ItemBytes) -> Result<structs::PartialNbt, Box<dyn std::error::Error>> {
+fn to_nbt(item_bytes: ItemBytes) -> Result<PartialNbt, Box<dyn std::error::Error>> {
     let bytes: StdResult<Vec<u8>, _> = item_bytes.into();
-    let nbt: structs::PartialNbt = nbt::from_gzip_reader(std::io::Cursor::new(bytes?))?;
+    let nbt: PartialNbt = nbt::from_gzip_reader(std::io::Cursor::new(bytes?))?;
     Ok(nbt)
 }
 
 
-fn is_pet(nbt: &structs::PartialNbtElement, name: String) -> Option<structs::Pet> {
+fn is_pet(nbt: &PartialNbtElement, name: String) -> Option<Pet> {
     if nbt.tag.extra_attributes.pet_info.is_none() {
         return None;
     }
@@ -78,7 +83,7 @@ fn is_pet(nbt: &structs::PartialNbtElement, name: String) -> Option<structs::Pet
         level = vec[1].to_string().replace("]", "").parse::<u64>().unwrap();
     }
 
-    let pet = structs::Pet {
+    let pet = Pet {
         name: json["type"].as_str().unwrap().to_string(),
         level: level,
         tier: json["tier"].as_str().unwrap().to_string(),
@@ -114,7 +119,7 @@ fn calc_pet_level(xp: u64, tier: String) -> u64 {
 
 }
 
-fn calc_additional_price(nbt: &structs::PartialNbtElement) -> Option<structs::PriceData> {
+fn calc_additional_price(nbt: &PartialNbtElement) -> Option<PriceData> {
     let is_recombed = match nbt.tag.extra_attributes.rarity_upgrades.as_ref() {
         Some(_) => 1,
         None => 0,
@@ -160,7 +165,7 @@ fn calc_additional_price(nbt: &structs::PartialNbtElement) -> Option<structs::Pr
         None => {}
     };
 
-    let price_data = structs::PriceData {
+    let price_data = PriceData {
         recombed: is_recombed,
         hpb: hot_potato_books.try_into().unwrap(),
         fpb: fuming_potato_books.try_into().unwrap(),
@@ -172,10 +177,43 @@ fn calc_additional_price(nbt: &structs::PartialNbtElement) -> Option<structs::Pr
     
 }
 
-fn process_page(req: serde_json::Value) -> Vec<structs::Auction> {
-    let s = Instant::now();
+fn find_id(item_name: &String) -> Option<String> {
+    let file: String = String::from(PATH_TO_CONVERSIONS);
+    let data = fs::read_to_string(&file).expect("Unable to read file");
 
-    let mut filtered_auctions: Vec<structs::Auction> = Vec::new();
+    let mut load_json: HashMap<String, String> = HashMap::new();
+    if fs::metadata(&file).unwrap().len() != 0 {
+        load_json = serde_json::from_str(&data).unwrap();
+    }
+
+    if load_json.contains_key(item_name) {
+        Some(load_json.get(item_name));
+    }
+    None
+}
+
+fn log_id(item_name: String, id: String) {
+    let file: String = String::from(PATH_TO_CONVERSIONS);
+
+    let data = fs::read_to_string(&file).expect("Unable to read file");
+
+    let mut load_json: HashMap<String, String> = HashMap::new();
+    if fs::metadata(&file).unwrap().len() != 0 {
+        load_json = serde_json::from_str(&data).unwrap();
+    }
+    if !load_json.contains_key(&item_name) {
+        load_json.insert(item_name, id);
+    }
+
+
+  
+}
+
+fn process_page(req: serde_json::Value,  conversion_table: &mut HashMap<String, String>) -> Vec<Auction> {
+    let s = Instant::now();
+    let unix_timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+
+    let mut filtered_auctions: Vec<Auction> = Vec::new();
 
 
     if req.get("auctions") != None {
@@ -189,35 +227,107 @@ fn process_page(req: serde_json::Value) -> Vec<structs::Auction> {
                 continue;
             }
 
-            let nbt = &to_nbt(serde_json::from_value(auc.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
+            // More in depth checks
+            let name: String = auc.get("item_name").unwrap().as_str().unwrap().to_string();
+            let lore: String = auc.get("item_lore").unwrap().as_str().unwrap().to_string();
+            let category: String = auc.get("category").unwrap().as_str().unwrap().to_string();
+            let start: u64 = auc.get("start").unwrap().as_u64().unwrap() / 1000; // convert unix_timestamp from milliseconds to seconds
 
-            let mut auction = structs::Auction {
-                id: nbt.tag.extra_attributes.id.as_ref().unwrap().to_string(),
+            if
+            name.contains("Skin") ||
+            lore.contains("Cake") ||
+            lore.contains("Furniture") ||
+            lore.contains("Obtained of Floor") ||
+            BLACKLISTED_ITEMS.iter().any(|i| name.contains(i)) {
+                continue;
+            }
+
+            // There are 5 cetegories - 
+            // weapons(not stackable), armor(not stackable), accessories (books and dungeon drops), blocks(mostly crap), tools & misc(pets)
+            // This way we know what items are stackable and can save time on quantity.
+
+            // Large optimization: Since most time is spend unzipping this nbt data (90%), we will do everything 
+            //                     we can to reduce how many times it needs to run. The solution is to only provide
+            //                     the price and id field to save time. This shortcut can be performed because of the large 
+            //                     database, id_conversion.json, NAME_VARIATION: ID
+            // 
+            // We only look at lowest bins of all items and only if that item has been up for less than IGNORE_AUCTION_MIN(7)
+            // This means any other auctions older than IGNORE_AUCTION_MIN will not be looked at in detail
+            // It is these items that we can save compute time on
+
+
+            // template
+            let mut auction = Auction {
+                // id: nbt.tag.extra_attributes.id.as_ref().unwrap().to_string(),
+                id: "".to_string(),
                 seller: auc.get("auctioneer").unwrap().as_str().unwrap().to_string(),
                 uuid: auc.get("uuid").unwrap().as_str().unwrap().to_string(),
                 tier: auc.get("tier").unwrap().as_str().unwrap().to_string(),
-                name: auc.get("item_name").unwrap().as_str().unwrap().to_string(),
-                lore: auc.get("item_lore").unwrap().as_str().unwrap().to_string(),
+                name: name.clone(),
+                lore: lore,
                 bytes: auc.get("item_bytes").unwrap().clone(),
                 price: auc.get("starting_bid").unwrap().as_u64().unwrap(),
-                start: auc.get("start").unwrap().as_u64().unwrap() / 1000, // convert unix_timestamp from milliseconds to seconds
-                pet_data: is_pet(nbt, auc.get("item_name").unwrap().as_str().unwrap().to_string()),
+                start: start,
+                // pet_data: is_pet(nbt, auc.get("item_name").unwrap().as_str().unwrap().to_string()),
+                pet_data: None,
                 additional_price_data: None,
                 // last_update: auc.get("last_updated").unwrap().as_u64().unwrap(),
             };
 
-            auction.price /= nbt.count; // scales price for stacked items
 
-            // More in depth checks
-            if
-            auction.name.contains("Skin") ||
-            auction.lore.contains("Cake") ||
-            auction.lore.contains("Furniture") ||
-            auction.lore.contains("Obtained of Floor") ||
-            BLACKLISTED_ITEMS.iter().any(|i| auction.name.contains(i)) {
-                continue;
+
+            // blocks, misc, armor, weapon, accessories, consumables 
+            // we will skips blocks
+            if (unix_timestamp - start) / 60 > IGNORE_AUCTION_MIN { // if this is a possible flip
+                if category == "armor" || category == "weapon" || category == "accessories" { // non stackable (known quantity/count)
+                    if conversion_table.contains_key(&name) {
+                        auction.id = conversion_table.get(&name).unwrap().to_string();
+                    } 
+                    else {
+                        let nbt = &to_nbt(serde_json::from_value(auc.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
+                        auction.id = nbt.tag.extra_attributes.id.as_ref().unwrap().to_string();
+                        conversion_table.insert(name, auction.clone().id);
+                    }
+                    filtered_auctions.push(auction);
+                    continue;
+                }
+                else if category == "consumables" && name.contains("Enchanted Book") { // Mainly enchanted book
+                    let nbt = &to_nbt(serde_json::from_value(auc.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
+                    match nbt.tag.extra_attributes.enchantments.as_ref() {
+                        Some(e) => {
+                            // If the book only have 1 enchant and the rarity of the book is at least RARE
+                            // This filters out default level enchants obtainable from the enchantment table
+                            let enchants = e.len();
+                            if enchants == 1 && auction.tier != "COMMON" && auction.tier != "UNCOMMON" {
+                                for (k, v) in e {
+                                    let new_id = format!("{}_{}", k, v);
+                                    auction.id = new_id.clone();
+                                    auction.name = new_id.clone();
+                                }
+                            }
+                            filtered_auctions.push(auction);
+                            continue;
+                        }
+                        None => {}
+                    }
+                    continue;
+                }
+
+                else if  category == "misc" { // pets
+                    let nbt = &to_nbt(serde_json::from_value(auc.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
+                    auction.pet_data = is_pet(nbt, auc.get("item_name").unwrap().as_str().unwrap().to_string());
+                    if name.contains("lvl") { 
+                        let pet_data = auction.clone().pet_data.unwrap();
+                        auction.id = format!("{} {} {} {} {}", pet_data.tier, pet_data.name, pet_data.level, pet_data.item, pet_data.candy);
+                        filtered_auctions.push(auction);
+                        continue;
+                    }
+                    continue;
+                }
             }
-
+            // anything that makes it to this point will be looked at fore lowest bin flips because they have been up for less than IGNORE_AUCTION_MIN
+            let nbt = &to_nbt(serde_json::from_value(auc.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
+            auction.price /= nbt.count; // scales price for stacked items
             // A pet
             // Formatted as TIER NAME LEVEL PET_ITEM CANDY_USED
             // Ex: RARE TIGER 78 DWARF_TURTLE_SHELMET 0
@@ -226,7 +336,6 @@ fn process_page(req: serde_json::Value) -> Vec<structs::Auction> {
                 auction.id = format!("{} {} {} {} {}", pet_data.tier, pet_data.name, pet_data.level, pet_data.item, pet_data.candy);
                 filtered_auctions.push(auction);
             }
-
             else if auction.name.contains("Enchanted Book") {
                 match nbt.tag.extra_attributes.enchantments.as_ref() {
                     Some(e) => {
@@ -278,20 +387,20 @@ async fn fetch(url: String) -> serde_json::Value{
 
 
 // Find flips that fit criteria and write those to JSON for future use.
-fn find_flips(auctions: &HashMap<String, Vec<structs::Auction>>) {
+fn find_flips(auctions: &HashMap<String, Vec<Auction>>) {
     let min_profit = 500_000;
     let min_profit_percentage = 15;
     let min_volume = 3;
     // let max_bid = 100_000_000;
 
-    let mut possible_flips: Vec<structs::Flip> = Vec::new();
+    let mut possible_flips: Vec<Flip> = Vec::new();
     
     let unix_timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
 
     // Load json database for further comparisson 
-    let data = fs::read_to_string("./src/sales.json").expect("Unable to read file");
-    let mut load_json: HashMap<String, Vec<structs::SaleData>> = HashMap::new();
-    if fs::metadata("./src/sales.json").unwrap().len() != 0 {
+    let data = fs::read_to_string(PATH_TO_SALES).expect("Unable to read file");
+    let mut load_json: HashMap<String, Vec<SaleData>> = HashMap::new();
+    if fs::metadata(PATH_TO_SALES).unwrap().len() != 0 {
         load_json = serde_json::from_str(&data).unwrap();
     }
     for (item_name, auc) in auctions.iter() {
@@ -334,7 +443,7 @@ fn find_flips(auctions: &HashMap<String, Vec<structs::Auction>>) {
             }
         }
 
-        let flip = structs::Flip {
+        let flip = Flip {
             flip_price: flip_price.try_into().unwrap(),
             profit_percentage: (flip_price * 100 / lowest_price).try_into().unwrap(),
             lowest_bin: auc[0].clone(),
@@ -360,7 +469,7 @@ fn find_flips(auctions: &HashMap<String, Vec<structs::Auction>>) {
 
         // && flip.profit_percentage > min_profit_percentage
         if flip.flip_price > min_profit && flip.profit_percentage > min_profit_percentage && flip.lowest_bin.tier == flip.next_lowest_bin.tier {
-            if (unix_timestamp - flip.lowest_bin.start) / 60 < 7 {  // if the auction has been up for more than 10 minutes ignore it (good auctions are sniped withing seconds)
+            if (unix_timestamp - flip.lowest_bin.start) / 60 < IGNORE_AUCTION_MIN {  // if the auction has been up for more than 10 minutes ignore it (good auctions are sniped withing seconds)
                 possible_flips.push(flip);
             }
         }
@@ -399,7 +508,14 @@ fn find_flips(auctions: &HashMap<String, Vec<structs::Auction>>) {
 
 pub async fn update_auctions() {
     let mut futures = FuturesUnordered::new();
-    let mut auctions_hashed: HashMap<String, Vec<structs::Auction>> = HashMap::new();
+    let mut auctions_hashed: HashMap<String, Vec<Auction>> = HashMap::new();
+
+    let file: String = String::from(PATH_TO_CONVERSIONS);
+    let data = fs::read_to_string(&file).expect("Unable to read file");
+    let mut conversion_tables: HashMap<String, String> = HashMap::new();
+    if fs::metadata(&file).unwrap().len() != 0 {
+        conversion_tables = serde_json::from_str(&data).unwrap();
+    }
 
     let page_0 = fetch(String::from("https://api.hypixel.net/skyblock/auctions?page=0")).await;
     let total_pages: u64 = page_0.get("totalPages").unwrap().as_u64().unwrap();
@@ -407,18 +523,21 @@ pub async fn update_auctions() {
         futures.push(fetch(format!("https://api.hypixel.net/skyblock/auctions?page={}", page_number)));
     }
     println!("All async requests sent! ({} pages)", total_pages);
-    let now = Instant::now();
+    let now: Instant = Instant::now();
     
     // Process page zero since it was already fetched to get totalPages
-    for auction in process_page(page_0) {
+    for auction in process_page(page_0, &mut conversion_tables) {
         auctions_hashed.entry(auction.id.clone()).or_default().push(auction);
     }
     while let Some(res) = futures.next().await {
-        let page = process_page(res);
+        let page = process_page(res, &mut conversion_tables);
         for auction in page {
             auctions_hashed.entry(auction.id.clone()).or_default().push(auction);
         }
     }
+
+    let json: String = serde_json::to_string(&conversion_tables).unwrap();
+    fs::write(file, &json).expect("Unable to write file");
   
     find_flips(&auctions_hashed);
     println!("All async requests returned! {:?} ({} auctions)", now.elapsed(), auctions_hashed.len());
@@ -434,7 +553,7 @@ pub async fn update_auctions_ended() {
     let auctions = req.get("auctions").unwrap().as_array().unwrap();
     println!("Auctions ended: {}", auctions.len());
 
-    let mut sales: Vec<structs::Sale> = Vec::new();
+    let mut sales: Vec<Sale> = Vec::new();
 
     for auc in auctions {
         // Guard case for non-BIN auctions
@@ -446,9 +565,9 @@ pub async fn update_auctions_ended() {
 
 
         // Convert from milliseconds to seconds
-        let mut sale = structs::Sale {
+        let mut sale = Sale {
             id: id.to_string(),
-            data: structs::SaleData {
+            data: SaleData {
                 price: auc.get("price").unwrap().as_u64().unwrap(),
                 timestamp: auc.get("timestamp").unwrap().as_u64().unwrap() / 1000, 
                 // buyer: auc.get("buyer").unwrap().as_str().unwrap().to_string(),
@@ -497,13 +616,13 @@ pub async fn update_auctions_ended() {
     
 }
 
-fn update_flips(flips: &Vec<structs::Flip>) {
-    let file: String = String::from("./src/flips.json");
+fn update_flips(flips: &Vec<Flip>) {
+    let file: String = String::from(PATH_TO_FLIPS);
     let json: String = serde_json::to_string(flips).unwrap();
     fs::write(file, &json).expect("Unable to write file");
 }
 
-fn get_item_bins(auctions: &HashMap<String, Vec<structs::Auction>>, item_id: String) -> Vec<structs::Auction> {
+fn get_item_bins(auctions: &HashMap<String, Vec<Auction>>, item_id: String) -> Vec<Auction> {
     match auctions.get(&item_id) {
         Some(item_auctions) => {
             item_auctions.clone().sort_by_key(|f| f.price.clone());
@@ -513,7 +632,7 @@ fn get_item_bins(auctions: &HashMap<String, Vec<structs::Auction>>, item_id: Str
     }
 }
 
-fn additional_costs(auctions: &HashMap<String, Vec<structs::Auction>>, price_data: &Option<structs::PriceData>) -> u64 {
+fn additional_costs(auctions: &HashMap<String, Vec<Auction>>, price_data: &Option<PriceData>) -> u64 {
     match price_data {
         Some(price_data) => {
             let mut sum: u64 = 0;
@@ -538,12 +657,12 @@ fn additional_costs(auctions: &HashMap<String, Vec<structs::Auction>>, price_dat
     }
 }
 
-fn update_json(new_sales: Vec<structs::Sale>) {
-    let file: String = String::from("./src/sales.json");
+fn update_json(new_sales: Vec<Sale>) {
+    let file: String = String::from(PATH_TO_SALES);
 
     let data = fs::read_to_string(&file).expect("Unable to read file");
 
-    let mut load_json: HashMap<String, Vec<structs::SaleData>> = HashMap::new();
+    let mut load_json: HashMap<String, Vec<SaleData>> = HashMap::new();
     if fs::metadata(&file).unwrap().len() != 0 {
         load_json = serde_json::from_str(&data).unwrap();
     }
@@ -563,17 +682,17 @@ fn update_json(new_sales: Vec<structs::Sale>) {
 pub async fn remove_expired_sales() {
     let unix_timestamp: u64 = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
 
-    let file: String = String::from("./src/sales.json");
+    let file: String = String::from(PATH_TO_SALES);
     let data: String = fs::read_to_string(&file).expect("Unable to read file");
 
-    let mut load_json: HashMap<String, Vec<structs::SaleData>> = HashMap::new();
+    let mut load_json: HashMap<String, Vec<SaleData>> = HashMap::new();
     if fs::metadata(&file).unwrap().len() != 0 {
         load_json = serde_json::from_str(&data).unwrap();
     }
     // Sale is stored where each sale is a HashMap stored in a Vec (Some idiot)
     for key in load_json.clone().keys() {
         for _ in load_json.clone().get(key) {// [ [{}] ]
-            load_json.get_mut(key).unwrap().retain(|sale| unix_timestamp - &sale.timestamp > SECONDS_IN_WEEK);
+            load_json.get_mut(key).unwrap().retain(|sale| unix_timestamp - &sale.timestamp < SECONDS_IN_WEEK);
         }
     }
     let json: String = serde_json::to_string(&load_json).unwrap();
@@ -581,7 +700,7 @@ pub async fn remove_expired_sales() {
     fs::write(file, &json).expect("Unable to write file");
 }
 
-fn open_auction(flips: &Vec<structs::Flip>) {
+fn open_auction(flips: &Vec<Flip>) {
     if flips.len() > 0 {
         let top_auc = &flips[flips.len()-1];
         let cmd = format!("/viewauction {}", top_auc.lowest_bin.uuid);

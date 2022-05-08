@@ -63,7 +63,7 @@ impl Flip {
         // This means that this flip would cause you to flip the item then more than it is normally worth
         // Could mean over bidding - indicated by red
         // if self.lowest_bin.price + self.flip_price as u64 > self.avg_raw_price {
-        if self.flip_price as f64 + self.lowest_bin.price as f64 / self.avg_raw_price as f64 > 0.2 {
+        if self.flip_price as u64 > self.avg_raw_price {
             println!("Item: {}", self.lowest_bin.name.underline().red());
         }
         else {
