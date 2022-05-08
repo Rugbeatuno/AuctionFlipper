@@ -46,6 +46,7 @@ extern crate json;
 // "bids": [],
 // "item_uuid": "2058c2cbf3954cd783f762bbecdb90d5"
 const BLACKLISTED_ITEMS: [&str; 59] = ["Gift the Fish", "Spooky Pie", "Spirit Leap", "Beach Ball", "Kat Flower", "Endstone Rose", "Teleport Pad", "Plumber's Sponge", "Block of", "Superboom TNT", "Budget Hopper", "Trap", "Decoy", "Undead Bow", "null", "Training Dummy", "Midas Staff", "Bingo Card", "Null", "Hardened Diamond", "Shiny", "Maxor's", "Emerald Armor", "Ember Rod", "Super Heavy", "Holy Dragon", "Very Wise", "Odd Conjuring", "Stereo Pants", "Miner Helment", "Miner Chestplate", "Miner Leggings", "Miner Boots", "Shrimp the Fish", "Corleonite", "Young Dragon", "Unstable Dragon", "Old Dragon", "Protector Dragon", "Potion", "Skeleton Lord Helmet", "Bedrock", "Midas' Sword", "Repelling Candle", "Cake Soul", "Wild Strawberry Dye", "Tuxedo", "Shrub", "Anvil", "Perfect Helmet", "Perfect Chestplate", "Perfect Leggings", "Perfect Boots", "Rune", "Horse Armor", "Flame Ring", "Cobblestone Wall", "Crab Hat of Celebration", "Map"];
+const ROMAN_NUMERALS: [&str; 10] = [" I\n", " II\n", " III\n", " IV\n", " V\n", " VI\n", " VII\n", " VIII\n", " IX\n", " X\n"];
 const SECONDS_IN_WEEK: u64 = 604_800;
 const IGNORE_AUCTION_MIN: u64 = 7;
 
@@ -177,44 +178,12 @@ fn calc_additional_price(nbt: &PartialNbtElement) -> Option<PriceData> {
     
 }
 
-fn find_id(item_name: &String) -> Option<String> {
-    let file: String = String::from(PATH_TO_CONVERSIONS);
-    let data = fs::read_to_string(&file).expect("Unable to read file");
-
-    let mut load_json: HashMap<String, String> = HashMap::new();
-    if fs::metadata(&file).unwrap().len() != 0 {
-        load_json = serde_json::from_str(&data).unwrap();
-    }
-
-    if load_json.contains_key(item_name) {
-        Some(load_json.get(item_name));
-    }
-    None
-}
-
-fn log_id(item_name: String, id: String) {
-    let file: String = String::from(PATH_TO_CONVERSIONS);
-
-    let data = fs::read_to_string(&file).expect("Unable to read file");
-
-    let mut load_json: HashMap<String, String> = HashMap::new();
-    if fs::metadata(&file).unwrap().len() != 0 {
-        load_json = serde_json::from_str(&data).unwrap();
-    }
-    if !load_json.contains_key(&item_name) {
-        load_json.insert(item_name, id);
-    }
-
-
-  
-}
 
 fn process_page(req: serde_json::Value,  conversion_table: &mut HashMap<String, String>) -> Vec<Auction> {
     let s = Instant::now();
     let unix_timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
 
     let mut filtered_auctions: Vec<Auction> = Vec::new();
-
 
     if req.get("auctions") != None {
         let page = req.get("auctions").unwrap().as_array().unwrap();
@@ -279,7 +248,46 @@ fn process_page(req: serde_json::Value,  conversion_table: &mut HashMap<String, 
             // blocks, misc, armor, weapon, accessories, consumables 
             // we will skips blocks
             if (unix_timestamp - start) / 60 > IGNORE_AUCTION_MIN { // if this is a possible flip
-                if category == "armor" || category == "weapon" || category == "accessories" { // non stackable (known quantity/count)
+                if category != "blocks" { // non stackable (known quantity/count)
+
+                    // pets
+                    if name.contains("[Lvl 100]") || name.contains("[Lvl 1]") { 
+                        let nbt = &to_nbt(serde_json::from_value(auc.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
+                        auction.pet_data = is_pet(nbt, auc.get("item_name").unwrap().as_str().unwrap().to_string());
+                        let pet_data = auction.clone().pet_data.unwrap();
+                        if pet_data.tier == "COMMON" || pet_data.tier == "UNCOMMOM" {
+                            continue;
+                        }
+                        auction.id = format!("{} {} {} {} {}", pet_data.tier, pet_data.name, pet_data.level, pet_data.item, pet_data.candy);
+                        filtered_auctions.push(auction);
+                        continue;
+                    }
+
+                    // Enchanted books
+                    if name.contains("Enchanted Book") {
+                        // guard condition - removes common and uncommon enchants (default basic enchants)
+                        if auction.lore.contains("COMMON") || auction.lore.contains("UNCOMMON") {
+                            continue;
+                        }
+                        // guard condition - removes any enchanted book with more than 2 enchants
+                        let total_enchants = ROMAN_NUMERALS.iter().filter(|&num| auction.lore.contains(num) == true).count();
+                        if total_enchants > 1 {
+                            continue;
+                        }
+
+                        // Only books remaining have 1 enchant and are non-basic/default level enchants
+                        let nbt = &to_nbt(serde_json::from_value(auc.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
+                        let enchants = nbt.tag.extra_attributes.enchantments.as_ref().unwrap();
+                        for (k, v) in enchants {
+                            let new_id = format!("{}_{}", k, v);
+                            auction.id = new_id.clone();
+                            auction.name = new_id.clone();
+                        }
+                        filtered_auctions.push(auction);
+                        continue;
+                    }
+
+                    // Default case
                     if conversion_table.contains_key(&name) {
                         auction.id = conversion_table.get(&name).unwrap().to_string();
                     } 
@@ -290,72 +298,48 @@ fn process_page(req: serde_json::Value,  conversion_table: &mut HashMap<String, 
                     }
                     filtered_auctions.push(auction);
                     continue;
-                }
-                else if category == "consumables" && name.contains("Enchanted Book") { // Mainly enchanted book
-                    let nbt = &to_nbt(serde_json::from_value(auc.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
-                    match nbt.tag.extra_attributes.enchantments.as_ref() {
-                        Some(e) => {
-                            // If the book only have 1 enchant and the rarity of the book is at least RARE
-                            // This filters out default level enchants obtainable from the enchantment table
-                            let enchants = e.len();
-                            if enchants == 1 && auction.tier != "COMMON" && auction.tier != "UNCOMMON" {
-                                for (k, v) in e {
-                                    let new_id = format!("{}_{}", k, v);
-                                    auction.id = new_id.clone();
-                                    auction.name = new_id.clone();
-                                }
-                            }
-                            filtered_auctions.push(auction);
-                            continue;
-                        }
-                        None => {}
-                    }
-                    continue;
-                }
 
-                else if  category == "misc" { // pets
-                    let nbt = &to_nbt(serde_json::from_value(auc.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
-                    auction.pet_data = is_pet(nbt, auc.get("item_name").unwrap().as_str().unwrap().to_string());
-                    if name.contains("lvl") { 
-                        let pet_data = auction.clone().pet_data.unwrap();
-                        auction.id = format!("{} {} {} {} {}", pet_data.tier, pet_data.name, pet_data.level, pet_data.item, pet_data.candy);
-                        filtered_auctions.push(auction);
-                        continue;
-                    }
-                    continue;
                 }
+                continue;
             }
             // anything that makes it to this point will be looked at fore lowest bin flips because they have been up for less than IGNORE_AUCTION_MIN
-            let nbt = &to_nbt(serde_json::from_value(auc.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
-            auction.price /= nbt.count; // scales price for stacked items
+          
             // A pet
             // Formatted as TIER NAME LEVEL PET_ITEM CANDY_USED
             // Ex: RARE TIGER 78 DWARF_TURTLE_SHELMET 0
-            if auction.id == "PET" { 
+            if name.contains("[Lvl 100]") || name.contains("[Lvl 1]") { 
+                let nbt = &to_nbt(serde_json::from_value(auc.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
+                auction.pet_data = is_pet(nbt, auc.get("item_name").unwrap().as_str().unwrap().to_string());
+
                 let pet_data = auction.clone().pet_data.unwrap();
                 auction.id = format!("{} {} {} {} {}", pet_data.tier, pet_data.name, pet_data.level, pet_data.item, pet_data.candy);
                 filtered_auctions.push(auction);
             }
             else if auction.name.contains("Enchanted Book") {
-                match nbt.tag.extra_attributes.enchantments.as_ref() {
-                    Some(e) => {
-                        // If the book only have 1 enchant and the rarity of the book is at least RARE
-                        // This filters out default level enchants obtainable from the enchantment table
-                        let enchants = e.len();
-                        if enchants == 1 && auction.tier != "COMMON" && auction.tier != "UNCOMMON" {
-                            for (k, v) in e {
-                                let new_id = format!("{}_{}", k, v);
-                                auction.id = new_id.clone();
-                                auction.name = new_id.clone();
-                            }
-                        }
-                        filtered_auctions.push(auction);
+                if auction.lore.contains("COMMON") || auction.lore.contains("UNCOMMON") {
                         continue;
                     }
-                    None => {}
-                }
+                    // guard condition - removes any enchanted book with more than 2 enchants
+                    let total_enchants = ROMAN_NUMERALS.iter().filter(|&num| auction.lore.contains(num) == true).count();
+                    if total_enchants > 1 {
+                        continue;
+                    }
+
+                    // Only books remaining have 1 enchant and are non-basic/default level enchants
+                    let nbt = &to_nbt(serde_json::from_value(auc.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
+                    let enchants = nbt.tag.extra_attributes.enchantments.as_ref().unwrap();
+                    for (k, v) in enchants {
+                        let new_id = format!("{}_{}", k, v);
+                        auction.id = new_id.clone();
+                        auction.name = new_id.clone();
+                    }
+                    filtered_auctions.push(auction);
+                    continue;
             }
             else {
+                let nbt = &to_nbt(serde_json::from_value(auc.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
+                auction.id = nbt.tag.extra_attributes.id.as_ref().unwrap().to_string();
+                auction.price /= nbt.count; // scales price for stacked items
                 auction.additional_price_data = calc_additional_price(nbt);
                 filtered_auctions.push(auction);
             }
