@@ -1,13 +1,8 @@
 use std::collections::HashMap;
+use std::fs;
 use crate::constants;
 
-use std::time::{SystemTime, UNIX_EPOCH};
-use chrono::*;
-
-
-// pub fn capitalize(s: &str) -> String {
-//     s[0..1].to_uppercase() + &s[1..]
-// }
+const PATH_TO_PAGES: &str = "./src/files/pages.txt";
 
 pub fn prettify_large_nums(num: usize) -> String {
     let mut conversions: HashMap<String, char> = HashMap::new();
@@ -33,34 +28,44 @@ pub fn prettify_large_nums(num: usize) -> String {
 }
 
 pub async fn get_duration_until_api_update() -> u64 {
-    let res = constants::HTTP_CLIENT1
-        .get("https://api.hypixel.net/skyblock/auctions?page=0")
-        .send()
-        .await;
+    let req = surf::get("https://api.hypixel.net/skyblock/auctions");
+    let res = constants::HTTP_CLIENT1.send(req).await;
 
-    let unix_timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-    match res {
-        Ok(res_unwrap) => match res_unwrap.header("age") {
-            Some(age_header) => {
-                let age = age_header.as_str().parse::<u64>().unwrap();
-                println!("Page age: {}", age);
-                // cloudfare doesn't return an exact time in ms, so the +2 accounts for that
-                let time = 60 - age + 2;
-                return unix_timestamp + time;
-            } 
-            None => {
-                let res = 60 - Local::now().second();
-                let res = res as u64;
-                return unix_timestamp + res;
-                
-            }
+    let json = res.unwrap().body_json().await;
+    let json: serde_json::Value = json.unwrap();
+    let last_updated = json.get("lastUpdated").unwrap().as_u64().unwrap();
+    return last_updated / 1000 + 60;
 
-            }
-        Err(_) => {
-            let res = 60 - Local::now().second();
-            let res = res as u64;
-            return unix_timestamp + res;
-        }
+}
 
+pub async fn update_pages_file(p: Option<u64>) {
+    let mut pages: u64 = p.unwrap_or(0);
+    let file: String = String::from(PATH_TO_PAGES);
+    
+    if pages == 0 {
+        let req = surf::get("https://api.hypixel.net/skyblock/auctions");
+        let res = constants::HTTP_CLIENT1.send(req).await;
+        let json = res.unwrap().body_json().await;
+        let json: serde_json::Value = json.unwrap();
+    
+        pages = match json.get("totalPages") {
+            Some(p) => p.as_u64().unwrap(),
+            None => 0
+        };
     }
+    
+    let json: String = serde_json::to_string(&pages).unwrap();
+    fs::write(file, &json).expect("Unable to write file");
+
+}
+
+pub fn get_page_file() -> u64 {
+    let file: String = String::from(PATH_TO_PAGES);
+    let data = fs::read_to_string(&file).expect("Unable to read file");
+    let mut pages: u64 = 0;
+    if fs::metadata(&file).unwrap().len() != 0 {
+        pages = data.parse().unwrap();
+    }
+    return pages;
+
 }

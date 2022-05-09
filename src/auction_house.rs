@@ -50,9 +50,9 @@ const ROMAN_NUMERALS: [&str; 10] = [" I\n", " II\n", " III\n", " IV\n", " V\n", 
 const SECONDS_IN_WEEK: u64 = 604_800;
 const IGNORE_AUCTION_MIN: u64 = 7;
 
-const PATH_TO_CONVERSIONS: &str = "./src/id_conversions.json";
-const PATH_TO_FLIPS: &str = "./src/flips.json";
-const PATH_TO_SALES: &str = "./src/sales.json";
+const PATH_TO_CONVERSIONS: &str = "./src/files/id_conversions.json";
+const PATH_TO_FLIPS: &str = "./src/files/flips.json";
+const PATH_TO_SALES: &str = "./src/files/sales.json";
 
 
 fn to_nbt(item_bytes: ItemBytes) -> Result<PartialNbt, Box<dyn std::error::Error>> {
@@ -252,12 +252,13 @@ fn process_page(req: serde_json::Value,  conversion_table: &mut HashMap<String, 
 
                     // pets
                     if name.contains("[Lvl 100]") || name.contains("[Lvl 1]") { 
+                        if auction.tier == "COMMON" || auction.tier == "UNCOMMOM" || auction.tier == "RARE" {
+                            continue;
+                        }
                         let nbt = &to_nbt(serde_json::from_value(auc.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
                         auction.pet_data = is_pet(nbt, auc.get("item_name").unwrap().as_str().unwrap().to_string());
                         let pet_data = auction.clone().pet_data.unwrap();
-                        if pet_data.tier == "COMMON" || pet_data.tier == "UNCOMMOM" {
-                            continue;
-                        }
+
                         auction.id = format!("{} {} {} {} {}", pet_data.tier, pet_data.name, pet_data.level, pet_data.item, pet_data.candy);
                         filtered_auctions.push(auction);
                         continue;
@@ -274,7 +275,6 @@ fn process_page(req: serde_json::Value,  conversion_table: &mut HashMap<String, 
                         if total_enchants > 1 {
                             continue;
                         }
-
                         // Only books remaining have 1 enchant and are non-basic/default level enchants
                         let nbt = &to_nbt(serde_json::from_value(auc.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
                         let enchants = nbt.tag.extra_attributes.enchantments.as_ref().unwrap();
@@ -303,11 +303,14 @@ fn process_page(req: serde_json::Value,  conversion_table: &mut HashMap<String, 
                 continue;
             }
             // anything that makes it to this point will be looked at fore lowest bin flips because they have been up for less than IGNORE_AUCTION_MIN
-          
+
             // A pet
             // Formatted as TIER NAME LEVEL PET_ITEM CANDY_USED
             // Ex: RARE TIGER 78 DWARF_TURTLE_SHELMET 0
             if name.contains("[Lvl 100]") || name.contains("[Lvl 1]") { 
+                if auction.tier == "COMMON" || auction.tier == "UNCOMMOM" || auction.tier == "RARE" {
+                    continue;
+                }
                 let nbt = &to_nbt(serde_json::from_value(auc.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
                 auction.pet_data = is_pet(nbt, auc.get("item_name").unwrap().as_str().unwrap().to_string());
 

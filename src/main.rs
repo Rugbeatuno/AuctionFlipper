@@ -11,7 +11,6 @@ use std::fs;
 use warp::{Filter};
 
 
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _web = tokio::spawn(async {
@@ -25,14 +24,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         warp::serve(routes).run(([127, 0, 0, 1], 5000)).await;
     });
 
+    // update page count
+    utils::update_pages_file(None).await;
 
-
-    let mut next_update: u64 = 0;
+    let mut next_update: u64 = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
     let mut holder: u64 = 0;
     while holder < 1_000_000 {
         let unix_timestamp: u64 = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
         let dt = Local::now();
-        print!("\r  {}  ", dt.second());
+        print!("\r  {}  ", next_update - unix_timestamp);
 
         if next_update == 0 && dt.second() == 59 || next_update == unix_timestamp {
             // utils::get_duration_until_api_update().await;
