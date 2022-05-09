@@ -303,7 +303,7 @@ fn process_page(req: serde_json::Value,  conversion_table: &mut HashMap<String, 
                 continue;
             }
             // anything that makes it to this point will be looked at fore lowest bin flips because they have been up for less than IGNORE_AUCTION_MIN
-
+            
             // A pet
             // Formatted as TIER NAME LEVEL PET_ITEM CANDY_USED
             // Ex: RARE TIGER 78 DWARF_TURTLE_SHELMET 0
