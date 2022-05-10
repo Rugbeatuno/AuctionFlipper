@@ -18,7 +18,6 @@ pub struct Auction {
     pub tier: String,
     pub name: String,
     pub lore: String,
-    pub bytes: serde_json::Value,
     pub price: u64,
     pub start: u64,
     pub pet_data: Option<Pet>,
