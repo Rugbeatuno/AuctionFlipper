@@ -257,7 +257,7 @@ fn pet_case(filtered_auctions: &mut Vec<Auction>, auction: &mut Auction) {
 }
 
 fn process_page(req: serde_json::Value,  conversion_table: &mut HashMap<String, String>) -> Vec<Auction> {
-    let s = Instant::now();
+    // let s = Instant::now();
     let unix_timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
 
     let mut filtered_auctions: Vec<Auction> = Vec::new();
@@ -364,25 +364,26 @@ fn process_page(req: serde_json::Value,  conversion_table: &mut HashMap<String, 
                 continue;
             }
             else if auction.name.contains("Enchanted Book") {
-                if auction.lore.contains("COMMON") || auction.lore.contains("UNCOMMON") {
-                        continue;
-                    }
-                    // guard condition - removes any enchanted book with more than 2 enchants
-                    let total_enchants = ROMAN_NUMERALS.iter().filter(|&num| auction.lore.contains(num) == true).count();
-                    if total_enchants > 1 {
-                        continue;
-                    }
+                // if auction.lore.contains("COMMON") || auction.lore.contains("UNCOMMON") {
+                //         continue;
+                //     }
+                //     // guard condition - removes any enchanted book with more than 2 enchants
+                //     let total_enchants = ROMAN_NUMERALS.iter().filter(|&num| auction.lore.contains(num) == true).count();
+                //     if total_enchants > 1 {
+                //         continue;
+                //     }
 
-                    // Only books remaining have 1 enchant and are non-basic/default level enchants
-                    let nbt = &to_nbt(serde_json::from_value(auc.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
-                    let enchants = nbt.tag.extra_attributes.enchantments.as_ref().unwrap();
-                    for (k, v) in enchants {
-                        let new_id = format!("{}_{}", k, v);
-                        auction.id = new_id.clone();
-                        auction.name = new_id.clone();
-                    }
-                    filtered_auctions.push(auction);
-                    continue;
+                //     // Only books remaining have 1 enchant and are non-basic/default level enchants
+                //     let nbt = &to_nbt(serde_json::from_value(auc.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
+                //     let enchants = nbt.tag.extra_attributes.enchantments.as_ref().unwrap();
+                //     for (k, v) in enchants {
+                //         let new_id = format!("{}_{}", k, v);
+                //         auction.id = new_id.clone();
+                //         auction.name = new_id.clone();
+                //     }
+                //     filtered_auctions.push(auction);
+                book_case(&mut filtered_auctions, conversion_table, &mut auction, &auc);
+                continue;
             }
             else {
                 let nbt = &to_nbt(serde_json::from_value(auc.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
@@ -397,7 +398,7 @@ fn process_page(req: serde_json::Value,  conversion_table: &mut HashMap<String, 
     else {
         println!("Page failed!");
     }
-    println!("{:?}", s.elapsed());
+    // println!("{:?}", s.elapsed());
     filtered_auctions
 }
 
@@ -722,10 +723,8 @@ pub async fn remove_expired_sales() {
         load_json = serde_json::from_str(&data).unwrap();
     }
     // Sale is stored where each sale is a HashMap stored in a Vec (Some idiot)
-    for key in load_json.clone().keys() {
-        for _ in load_json.clone().get(key) {// [ [{}] ]
-            load_json.get_mut(key).unwrap().retain(|sale| unix_timestamp - &sale.timestamp < SECONDS_IN_WEEK);
-        }
+    for key in load_json.clone().keys() {// [ [{}] ]
+        load_json.get_mut(key).unwrap().retain(|sale| unix_timestamp - &sale.timestamp < SECONDS_IN_WEEK);
     }
     let json: String = serde_json::to_string(&load_json).unwrap();
 

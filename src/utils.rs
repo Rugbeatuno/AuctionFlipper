@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use crate::constants;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const PATH_TO_PAGES: &str = "./src/files/pages.txt";
 
@@ -33,8 +34,13 @@ pub async fn get_duration_until_api_update() -> u64 {
 
     let json = res.unwrap().body_json().await;
     let json: serde_json::Value = json.unwrap();
-    let last_updated = json.get("lastUpdated").unwrap().as_u64().unwrap();
-    return last_updated / 1000 + 60;
+    let mut last_updated = json.get("lastUpdated").unwrap().as_u64().unwrap();
+    let unix_timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    last_updated /= 1000;
+    while last_updated <= unix_timestamp {
+        last_updated += 60;
+    }
+    return last_updated;
 
 }
 
