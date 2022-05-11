@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use crate::constants;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const PATH_TO_PAGES: &str = "./src/files/pages.txt";
 
@@ -33,8 +34,14 @@ pub async fn get_duration_until_api_update() -> u64 {
 
     let json = res.unwrap().body_json().await;
     let json: serde_json::Value = json.unwrap();
-    let last_updated = json.get("lastUpdated").unwrap().as_u64().unwrap();
-    return last_updated / 1000 + 60;
+
+    let mut last_updated = json.get("lastUpdated").unwrap().as_u64().unwrap() / 1000;
+    let unix_timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+
+    while last_updated < unix_timestamp {
+        last_updated += 60;
+    }
+    return last_updated;
 
 }
 
@@ -59,13 +66,13 @@ pub async fn update_pages_file(p: Option<u64>) {
 
 }
 
-// pub fn get_page_file() -> u64 {
-//     let file: String = String::from(PATH_TO_PAGES);
-//     let data = fs::read_to_string(&file).expect("Unable to read file");
-//     let mut pages: u64 = 0;
-//     if fs::metadata(&file).unwrap().len() != 0 {
-//         pages = data.parse().unwrap();
-//     }
-//     return pages;
+pub fn get_page_file() -> u64 {
+    let file: String = String::from(PATH_TO_PAGES);
+    let data = fs::read_to_string(&file).expect("Unable to read file");
+    let mut pages: u64 = 0;
+    if fs::metadata(&file).unwrap().len() != 0 {
+        pages = data.parse().unwrap();
+    }
+    return pages;
 
-// }
+}

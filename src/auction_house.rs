@@ -262,6 +262,9 @@ fn process_page(req: serde_json::Value,  conversion_table: &mut HashMap<String, 
 
     let mut filtered_auctions: Vec<Auction> = Vec::new();
 
+    let mut holder = false;
+    let page_num = req.get("page").unwrap().as_u64().unwrap();
+
     if req.get("auctions") != None {
         let page = req.get("auctions").unwrap().as_array().unwrap();
         for auc in page.into_iter() {
@@ -386,6 +389,7 @@ fn process_page(req: serde_json::Value,  conversion_table: &mut HashMap<String, 
                 continue;
             }
             else {
+                holder = true;
                 let nbt = &to_nbt(serde_json::from_value(auc.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
                 auction.id = nbt.tag.extra_attributes.id.as_ref().unwrap().to_string();
                 auction.price /= nbt.count; // scales price for stacked items
@@ -398,6 +402,7 @@ fn process_page(req: serde_json::Value,  conversion_table: &mut HashMap<String, 
     else {
         println!("Page failed!");
     }
+    println!("Page {}: {}", page_num, holder);
     // println!("{:?}", s.elapsed());
     filtered_auctions
 }
@@ -491,9 +496,9 @@ fn find_flips(auctions: &HashMap<String, Vec<Auction>>) {
             // raw_price: 0,
         };
 
-        // if flip.raw_price > avg_raw_price {
-        //     continue;
-        // }
+        if flip.raw_price > avg_raw_price {
+            continue;
+        }
 
         // If the seller is me
         if flip.lowest_bin.seller == "1d7a1fd3350546efa653389dfa00ea85" {
@@ -543,6 +548,7 @@ pub async fn update_auctions() {
     let mut futures = FuturesUnordered::new();
     let mut auctions_hashed: HashMap<String, Vec<Auction>> = HashMap::new();
 
+    // Load conversions json
     let file: String = String::from(PATH_TO_CONVERSIONS);
     let data = fs::read_to_string(&file).expect("Unable to read file");
     let mut conversion_tables: HashMap<String, String> = HashMap::new();
@@ -550,13 +556,16 @@ pub async fn update_auctions() {
         conversion_tables = serde_json::from_str(&data).unwrap();
     }
 
+    // Load previous pages
+    // let prev_pages = get_pa
+    println!("All async requests sent! (pages)");
+    let now: Instant = Instant::now();
+
     let page_0 = fetch(String::from("https://api.hypixel.net/skyblock/auctions?page=0")).await;
     let total_pages: u64 = page_0.get("totalPages").unwrap().as_u64().unwrap();
     for page_number in 1..total_pages {
         futures.push(fetch(format!("https://api.hypixel.net/skyblock/auctions?page={}", page_number)));
     }
-    println!("All async requests sent! ({} pages)", total_pages);
-    let now: Instant = Instant::now();
     
     // Process page zero since it was already fetched to get totalPages
     for auction in process_page(page_0, &mut conversion_tables) {
