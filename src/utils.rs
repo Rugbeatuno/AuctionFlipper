@@ -66,13 +66,13 @@ pub async fn update_pages_file(p: Option<u64>) {
 
 }
 
-pub fn get_page_file() -> u64 {
-    let file: String = String::from(PATH_TO_PAGES);
-    let data = fs::read_to_string(&file).expect("Unable to read file");
-    let mut pages: u64 = 0;
-    if fs::metadata(&file).unwrap().len() != 0 {
-        pages = data.parse().unwrap();
-    }
-    return pages;
+// pub fn get_page_file() -> u64 {
+//     let file: String = String::from(PATH_TO_PAGES);
+//     let data = fs::read_to_string(&file).expect("Unable to read file");
+//     let mut pages: u64 = 0;
+//     if fs::metadata(&file).unwrap().len() != 0 {
+//         pages = data.parse().unwrap();
+//     }
+//     return pages;
 
-}
+// }

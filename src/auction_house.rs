@@ -262,8 +262,8 @@ fn process_page(req: serde_json::Value,  conversion_table: &mut HashMap<String, 
 
     let mut filtered_auctions: Vec<Auction> = Vec::new();
 
-    let mut holder = false;
-    let page_num = req.get("page").unwrap().as_u64().unwrap();
+    // let mut holder = false;
+    // let page_num = req.get("page").unwrap().as_u64().unwrap();
 
     if req.get("auctions") != None {
         let page = req.get("auctions").unwrap().as_array().unwrap();
@@ -389,7 +389,7 @@ fn process_page(req: serde_json::Value,  conversion_table: &mut HashMap<String, 
                 continue;
             }
             else {
-                holder = true;
+                // holder = true;
                 let nbt = &to_nbt(serde_json::from_value(auc.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
                 auction.id = nbt.tag.extra_attributes.id.as_ref().unwrap().to_string();
                 auction.price /= nbt.count; // scales price for stacked items
@@ -402,7 +402,7 @@ fn process_page(req: serde_json::Value,  conversion_table: &mut HashMap<String, 
     else {
         println!("Page failed!");
     }
-    println!("Page {}: {}", page_num, holder);
+    // println!("Page {}: {}", page_num, holder);
     // println!("{:?}", s.elapsed());
     filtered_auctions
 }
@@ -544,9 +544,45 @@ fn find_flips(auctions: &HashMap<String, Vec<Auction>>) {
     println!("---------------------------------")
 }
 
-pub async fn update_auctions() {
+// pub async fn get_total_pages() -> u64 {
+//     let page_0 = fetch(String::from("https://api.hypixel.net/skyblock/auctions?page=0")).await;
+//     let total_pages: u64 = page_0.get("totalPages").unwrap().as_u64().unwrap();
+//     return total_pages;
+// }
+
+pub async fn update_critical_auctions(auctions_hashed: &mut HashMap<String, Vec<Auction>>) {
     let mut futures = FuturesUnordered::new();
-    let mut auctions_hashed: HashMap<String, Vec<Auction>> = HashMap::new();
+
+    // Load conversions json
+    let file: String = String::from(PATH_TO_CONVERSIONS);
+    let data = fs::read_to_string(&file).expect("Unable to read file");
+    let mut conversion_tables: HashMap<String, String> = HashMap::new();
+    if fs::metadata(&file).unwrap().len() != 0 {
+        conversion_tables = serde_json::from_str(&data).unwrap();
+    }
+
+    let now: Instant = Instant::now();
+
+    futures.push(fetch("https://api.hypixel.net/skyblock/auctions?page=0".to_string()));
+    futures.push(fetch("https://api.hypixel.net/skyblock/auctions?page=1".to_string()));
+    
+    while let Some(res) = futures.next().await {
+        let page = process_page(res, &mut conversion_tables);
+        for auction in page {
+            auctions_hashed.entry(auction.id.clone()).or_default().push(auction);
+        }
+    }
+    find_flips(&auctions_hashed);
+    println!("\rCritical Auctions Returned in: {:?} ({} auctions)", now.elapsed(), auctions_hashed.len());
+
+    let json: String = serde_json::to_string(&conversion_tables).unwrap();
+    fs::write(file, &json).expect("Unable to write file");
+  
+
+}
+
+pub async fn update_all_auctions(auctions_hashed: &mut HashMap<String, Vec<Auction>>) {
+    let mut futures = FuturesUnordered::new();
 
     // Load conversions json
     let file: String = String::from(PATH_TO_CONVERSIONS);
@@ -558,7 +594,7 @@ pub async fn update_auctions() {
 
     // Load previous pages
     // let prev_pages = get_pa
-    println!("All async requests sent! (pages)");
+    println!("\rUpdating Non-essential Auctions!");
     let now: Instant = Instant::now();
 
     let page_0 = fetch(String::from("https://api.hypixel.net/skyblock/auctions?page=0")).await;
@@ -578,11 +614,12 @@ pub async fn update_auctions() {
         }
     }
 
+    find_flips(&auctions_hashed);
+
     let json: String = serde_json::to_string(&conversion_tables).unwrap();
     fs::write(file, &json).expect("Unable to write file");
   
-    find_flips(&auctions_hashed);
-    println!("All async requests returned! {:?} ({} auctions)", now.elapsed(), auctions_hashed.len());
+    println!("\rNon-essential Auctions Updated in: {:?} ({} auctions)", now.elapsed(), auctions_hashed.len());
 
     
     // let data = fetch(1).await;

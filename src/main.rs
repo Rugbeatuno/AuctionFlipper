@@ -6,7 +6,7 @@ mod utils;
 use chrono::*;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::fs;
-
+use std::collections::HashMap;
 
 use warp::{Filter};
 
@@ -27,28 +27,52 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // update page count
     utils::update_pages_file(None).await;
 
-    let mut next_update: u64 = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let mut next_update: u64 = 0;
     let mut holder: u64 = 0;
+
+    let mut auctions_hashed: HashMap<String, Vec<structs::Auction>> = HashMap::new();
+
     while holder < 1_000_000 {
         let unix_timestamp: u64 = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-        let dt = Local::now();
-        print!("\r  {}  ", next_update - unix_timestamp);
+        let seconds = Local::now().second();
 
-        if next_update == 0 && dt.second() == 59 || next_update == unix_timestamp {
-            // utils::get_duration_until_api_update().await;
-            auction_house::update_auctions().await;
+        if next_update == 0 && seconds == 59 {
+            next_update = utils::get_duration_until_api_update().await;
+        }
+
+        let time_until_update: i32 = next_update as i32 - unix_timestamp as i32;
+
+        if next_update == 0 {
+            continue;
+        }
+        print!("\r  {}  ", time_until_update);
+
+            
+        if time_until_update == 20 { // refresh non-essential pages
+            auctions_hashed.clear();
+            auction_house::update_all_auctions(&mut auctions_hashed).await;
+        }
+
+        else if time_until_update <= 1 { // refresh critcal pages
+            println!("{}", auctions_hashed.len());
+            auction_house::update_critical_auctions(&mut auctions_hashed).await;
+            println!("{}", auctions_hashed.len());
+
+        }
+
+        if time_until_update < -3 {
             auction_house::update_auctions_ended().await;
             auction_house::remove_expired_sales().await;
             next_update = utils::get_duration_until_api_update().await;
             holder += 1;
-
         }
+
     }
     Ok(())
 }
 
 async fn get_flips() -> Result<impl warp::Reply, warp::Rejection> {
-    let file: String = String::from("./src/flips.json");
+    let file: String = String::from("./src/files/flips.json");
 
     let data = fs::read_to_string(&file).expect("Unable to read file");
 
