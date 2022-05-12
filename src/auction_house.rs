@@ -500,6 +500,10 @@ fn find_flips(auctions: &HashMap<String, Vec<Auction>>) {
             continue;
         }
 
+        if (flip.lowest_bin.price + flip.flip_price as u64) as f32 / flip.avg_raw_price as f32 > 1.3 {
+            continue;
+        }
+
         // If the seller is me
         if flip.lowest_bin.seller == "1d7a1fd3350546efa653389dfa00ea85" {
             continue;
@@ -550,7 +554,7 @@ fn find_flips(auctions: &HashMap<String, Vec<Auction>>) {
 //     return total_pages;
 // }
 
-pub async fn update_critical_auctions(auctions_hashed: &mut HashMap<String, Vec<Auction>>) {
+pub async fn update_critical_auctions(auctions_hashed: &mut HashMap<String, Vec<Auction>>, seen_ids: &mut Vec<String>) {
     let mut futures = FuturesUnordered::new();
 
     // Load conversions json
@@ -569,6 +573,10 @@ pub async fn update_critical_auctions(auctions_hashed: &mut HashMap<String, Vec<
     while let Some(res) = futures.next().await {
         let page = process_page(res, &mut conversion_tables);
         for auction in page {
+            if seen_ids.contains(&auction.uuid) {
+                continue;
+            }
+            seen_ids.push(auction.uuid.clone());
             auctions_hashed.entry(auction.id.clone()).or_default().push(auction);
         }
     }
@@ -581,7 +589,7 @@ pub async fn update_critical_auctions(auctions_hashed: &mut HashMap<String, Vec<
 
 }
 
-pub async fn update_all_auctions(auctions_hashed: &mut HashMap<String, Vec<Auction>>) {
+pub async fn update_all_auctions(auctions_hashed: &mut HashMap<String, Vec<Auction>>, seen_ids: &mut Vec<String>) {
     let mut futures = FuturesUnordered::new();
 
     // Load conversions json
@@ -595,7 +603,7 @@ pub async fn update_all_auctions(auctions_hashed: &mut HashMap<String, Vec<Aucti
     // Load previous pages
     // let prev_pages = get_pa
     println!("\rUpdating Non-essential Auctions!");
-    let now: Instant = Instant::now();
+    // let now: Instant = Instant::now();
 
     let page_0 = fetch(String::from("https://api.hypixel.net/skyblock/auctions?page=0")).await;
     let total_pages: u64 = page_0.get("totalPages").unwrap().as_u64().unwrap();
@@ -610,6 +618,10 @@ pub async fn update_all_auctions(auctions_hashed: &mut HashMap<String, Vec<Aucti
     while let Some(res) = futures.next().await {
         let page = process_page(res, &mut conversion_tables);
         for auction in page {
+            if seen_ids.contains(&auction.uuid) {
+                continue;
+            }
+            seen_ids.push(auction.uuid.clone());
             auctions_hashed.entry(auction.id.clone()).or_default().push(auction);
         }
     }
@@ -619,7 +631,7 @@ pub async fn update_all_auctions(auctions_hashed: &mut HashMap<String, Vec<Aucti
     let json: String = serde_json::to_string(&conversion_tables).unwrap();
     fs::write(file, &json).expect("Unable to write file");
   
-    println!("\rNon-essential Auctions Updated in: {:?} ({} auctions)", now.elapsed(), auctions_hashed.len());
+    // println!("\rNon-essential Auctions Updated in: {:?} ({} auctions)", now.elapsed(), auctions_hashed.len());
 
     
     // let data = fetch(1).await;
