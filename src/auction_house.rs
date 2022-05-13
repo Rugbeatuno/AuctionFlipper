@@ -432,6 +432,7 @@ fn find_flips(auctions: &HashMap<String, Vec<Auction>>) {
     // let max_bid = 100_000_000;
 
     let mut possible_flips: Vec<Flip> = Vec::new();
+    let mut failed_flips: Vec<Flip> = Vec::new();
     
     let unix_timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
 
@@ -481,7 +482,7 @@ fn find_flips(auctions: &HashMap<String, Vec<Auction>>) {
             }
         }
 
-        let flip = Flip {
+        let mut flip = Flip {
             flip_price: flip_price.try_into().unwrap(),
             profit_percentage: (flip_price * 100 / lowest_price).try_into().unwrap(),
             lowest_bin: auc[0].clone(),
@@ -493,6 +494,7 @@ fn find_flips(auctions: &HashMap<String, Vec<Auction>>) {
             },
             raw_price: if auc[0].price > additional_costs {auc[0].price - additional_costs} else {auc[0].price},
             avg_raw_price: avg_raw_price,
+            fail_reason: None,
             // raw_price: 0,
         };
 
@@ -500,7 +502,9 @@ fn find_flips(auctions: &HashMap<String, Vec<Auction>>) {
             continue;
         }
 
-        if (flip.lowest_bin.price + flip.flip_price as u64) as f32 / flip.avg_raw_price as f32 > 1.3 {
+        if (flip.lowest_bin.price + flip.flip_price as u64) as f32 / flip.avg_raw_price as f32 > 1.2 {
+            flip.fail_reason = Some("Possible Overvalue".to_string());
+            failed_flips.push(flip);
             continue;
         }
 
@@ -523,6 +527,10 @@ fn find_flips(auctions: &HashMap<String, Vec<Auction>>) {
     // If not, recommend the largest flip
     // possible_flips.sort_by_key(|f| f.flip_price.clone());
     if possible_flips.len() == 0 {
+        failed_flips.sort_by_key(|f| f.flip_price.clone());
+        for flip in failed_flips {
+            flip.print();
+        }
         return;
     }
 
@@ -538,10 +546,10 @@ fn find_flips(auctions: &HashMap<String, Vec<Auction>>) {
 
         }
     }
-    update_flips(&possible_flips);
     open_auction(&possible_flips);
+    update_flips(&possible_flips);
 
-    for flip in possible_flips {
+    for flip in possible_flips.clone() {
         flip.print();
     }
     
@@ -565,7 +573,7 @@ pub async fn update_critical_auctions(auctions_hashed: &mut HashMap<String, Vec<
         conversion_tables = serde_json::from_str(&data).unwrap();
     }
 
-    let now: Instant = Instant::now();
+    let _now: Instant = Instant::now();
 
     futures.push(fetch("https://api.hypixel.net/skyblock/auctions?page=0".to_string()));
     futures.push(fetch("https://api.hypixel.net/skyblock/auctions?page=1".to_string()));
@@ -581,7 +589,7 @@ pub async fn update_critical_auctions(auctions_hashed: &mut HashMap<String, Vec<
         }
     }
     find_flips(&auctions_hashed);
-    println!("\rCritical Auctions Returned in: {:?} ({} auctions)", now.elapsed(), auctions_hashed.len());
+    // println!("\rCritical Auctions Returned in: {:?} ({} auctions)", now.elapsed(), auctions_hashed.len());
 
     let json: String = serde_json::to_string(&conversion_tables).unwrap();
     fs::write(file, &json).expect("Unable to write file");

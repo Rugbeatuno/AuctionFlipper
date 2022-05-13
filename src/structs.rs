@@ -52,6 +52,7 @@ pub struct Flip {
     pub last_hour_volume: usize,
     pub raw_price: u64,
     pub avg_raw_price: u64,
+    pub fail_reason: Option<String>,
 }
 
 impl Flip {
@@ -62,8 +63,8 @@ impl Flip {
         // This means that this flip would cause you to flip the item then more than it is normally worth
         // Could mean over bidding - indicated by red
         // if self.lowest_bin.price + self.flip_price as u64 > self.avg_raw_price {
-        if self.flip_price as u64 > self.avg_raw_price {
-            println!("Item: {}", self.lowest_bin.name.underline().red());
+        if self.fail_reason != None {
+            println!("Item: {} - {}", self.lowest_bin.name.underline().red(), self.fail_reason.as_ref().unwrap().red());
         }
         else {
             println!("Item: {}", self.lowest_bin.name.underline().green());

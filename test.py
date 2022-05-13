@@ -10,7 +10,7 @@ keyboard = Controller()
 prev_text = clipboard.paste() 
 while True:
     try:
-        time.sleep(0.05)
+        time.sleep(0.03)
         text = clipboard.paste() 
         if text != prev_text:
             prev_text = text
@@ -21,6 +21,7 @@ while True:
             keyboard.type(text)
             time.sleep(0.1)
             keyboard.press(Key.enter)
+            time.sleep(3)
     except TypeError:
         pass
 

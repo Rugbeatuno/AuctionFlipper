@@ -3,7 +3,7 @@ mod constants;
 mod structs;
 mod utils;
 
-use chrono::*;
+// use chrono::*;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::fs;
 use std::collections::HashMap;
@@ -35,7 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     while holder < 1_000_000 {
         let unix_timestamp: u64 = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-        let seconds = Local::now().second();
+        // let seconds = Local::now().second();
 
         if next_update == 0 {
             next_update = utils::get_duration_until_api_update().await;
@@ -62,7 +62,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             auction_house::update_critical_auctions(&mut auctions_hashed, &mut auction_ids).await;
         }
 
-        if time_until_update < -2 {
+        if time_until_update < -10 {
             auction_house::update_auctions_ended().await;
             auction_house::remove_expired_sales().await;
             next_update = utils::get_duration_until_api_update().await;
