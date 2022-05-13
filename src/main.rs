@@ -28,7 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     utils::update_pages_file(None).await;
 
     let mut next_update: u64 = 0;
-    let mut holder: u64 = 0;
+    let holder: u64 = 0;
 
     let mut auctions_hashed: HashMap<String, Vec<structs::Auction>> = HashMap::new();
     let mut auction_ids: Vec<String> = vec![];
@@ -38,7 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // let seconds = Local::now().second();
 
         if next_update == 0 {
-            next_update = utils::get_duration_until_api_update().await;
+            next_update = utils::get_duration_until_api_update2().await;
         }
 
         let time_until_update: i32 = next_update as i32 - unix_timestamp as i32;
@@ -65,8 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if time_until_update < -10 {
             auction_house::update_auctions_ended().await;
             auction_house::remove_expired_sales().await;
-            next_update = utils::get_duration_until_api_update().await;
-            holder += 1;
+            next_update = utils::get_duration_until_api_update2().await;
             auctions_hashed.clear();
             auction_ids.clear();
             auction_house::update_all_auctions(&mut auctions_hashed, &mut auction_ids).await;
