@@ -45,6 +45,39 @@ pub async fn get_duration_until_api_update() -> u64 {
 
 }
 
+
+// Uses cloudflare age headers
+pub async fn get_duration_until_api_update2() -> u64 {
+    let res = constants::HTTP_CLIENT1
+        .get("https://api.hypixel.net/skyblock/auctions?page=0")
+        .send()
+        .await;
+
+    let unix_timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    match res {
+        Ok(res_unwrap) => match res_unwrap.header("age") {
+            Some(age_header) => {
+                let age = age_header.as_str().parse::<u64>().unwrap();
+                println!("Page age: {}", age);
+                // cloudfare doesn't return an exact time in ms, so the +2 accounts for that
+                let age = age % 60;
+                let time = 60 - age + 2;
+                return unix_timestamp + time;
+            } 
+            None => {
+                return unix_timestamp + 60;
+
+            }
+
+            }
+        Err(_) => {
+            return unix_timestamp + 60;
+        }
+
+    }
+}
+
+
 pub async fn update_pages_file(p: Option<u64>) {
     let mut pages: u64 = p.unwrap_or(0);
     let file: String = String::from(PATH_TO_PAGES);
@@ -65,6 +98,8 @@ pub async fn update_pages_file(p: Option<u64>) {
     fs::write(file, &json).expect("Unable to write file");
 
 }
+
+
 
 // pub fn get_page_file() -> u64 {
 //     let file: String = String::from(PATH_TO_PAGES);

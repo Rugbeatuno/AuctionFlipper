@@ -63,9 +63,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         if time_until_update < -10 {
+            next_update = utils::get_duration_until_api_update().await;
             auction_house::update_auctions_ended().await;
             auction_house::remove_expired_sales().await;
-            next_update = utils::get_duration_until_api_update().await;
             holder += 1;
             auctions_hashed.clear();
             auction_ids.clear();
