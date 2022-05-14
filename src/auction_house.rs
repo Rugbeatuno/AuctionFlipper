@@ -45,7 +45,7 @@ extern crate json;
 // "bin": true,
 // "bids": [],
 // "item_uuid": "2058c2cbf3954cd783f762bbecdb90d5"
-const BLACKLISTED_ITEMS: [&str; 59] = ["Gift the Fish", "Spooky Pie", "Spirit Leap", "Beach Ball", "Kat Flower", "Endstone Rose", "Teleport Pad", "Plumber's Sponge", "Block of", "Superboom TNT", "Budget Hopper", "Trap", "Decoy", "Undead Bow", "null", "Training Dummy", "Midas Staff", "Bingo Card", "Null", "Hardened Diamond", "Shiny", "Maxor's", "Emerald Armor", "Ember Rod", "Super Heavy", "Holy Dragon", "Very Wise", "Odd Conjuring", "Stereo Pants", "Miner Helment", "Miner Chestplate", "Miner Leggings", "Miner Boots", "Shrimp the Fish", "Corleonite", "Young Dragon", "Unstable Dragon", "Old Dragon", "Protector Dragon", "Potion", "Skeleton Lord Helmet", "Bedrock", "Midas' Sword", "Repelling Candle", "Cake Soul", "Wild Strawberry Dye", "Tuxedo", "Shrub", "Anvil", "Perfect Helmet", "Perfect Chestplate", "Perfect Leggings", "Perfect Boots", "Rune", "Horse Armor", "Flame Ring", "Cobblestone Wall", "Crab Hat of Celebration", "Map"];
+const BLACKLISTED_ITEMS: [&str; 60] = ["Dirt Bottle", "Gift the Fish", "Spooky Pie", "Spirit Leap", "Beach Ball", "Kat Flower", "Endstone Rose", "Teleport Pad", "Plumber's Sponge", "Block of", "Superboom TNT", "Budget Hopper", "Trap", "Decoy", "Undead Bow", "null", "Training Dummy", "Midas Staff", "Bingo Card", "Null", "Hardened Diamond", "Shiny", "Maxor's", "Emerald Armor", "Ember Rod", "Super Heavy", "Holy Dragon", "Very Wise", "Odd Conjuring", "Stereo Pants", "Miner Helment", "Miner Chestplate", "Miner Leggings", "Miner Boots", "Shrimp the Fish", "Corleonite", "Young Dragon", "Unstable Dragon", "Old Dragon", "Protector Dragon", "Potion", "Skeleton Lord Helmet", "Bedrock", "Midas' Sword", "Repelling Candle", "Cake Soul", "Wild Strawberry Dye", "Tuxedo", "Shrub", "Anvil", "Perfect Helmet", "Perfect Chestplate", "Perfect Leggings", "Perfect Boots", "Rune", "Horse Armor", "Flame Ring", "Cobblestone Wall", "Crab Hat of Celebration", "Map"];
 const ROMAN_NUMERALS: [&str; 10] = [" I\n", " II\n", " III\n", " IV\n", " V\n", " VI\n", " VII\n", " VIII\n", " IX\n", " X\n"];
 const SECONDS_IN_WEEK: u64 = 604_800;
 const IGNORE_AUCTION_MIN: u64 = 7;
@@ -503,7 +503,7 @@ fn find_flips(auctions: &HashMap<String, Vec<Auction>>) {
         }
 
         if (flip.lowest_bin.price + flip.flip_price as u64) as f32 / flip.avg_raw_price as f32 > 1.2 {
-            flip.fail_reason = Some("Possible Overvalue".to_string());
+            flip.fail_reason = Some("Possibly Overvalued".to_string());
             failed_flips.push(flip);
             continue;
         }
@@ -528,7 +528,7 @@ fn find_flips(auctions: &HashMap<String, Vec<Auction>>) {
     // possible_flips.sort_by_key(|f| f.flip_price.clone());
     if possible_flips.len() == 0 {
         failed_flips.sort_by_key(|f| f.flip_price.clone());
-        for flip in failed_flips {
+        for flip in &failed_flips[failed_flips.len() - 3..] {
             flip.print();
         }
         return;
