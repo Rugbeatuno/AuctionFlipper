@@ -2,11 +2,12 @@ mod auction_house;
 mod constants;
 mod structs;
 mod utils;
+mod pets;
+mod auctions_ended;
+mod regular_items;
 
-// use chrono::*;
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::fs;
-use std::collections::HashMap;
+use std::{fs, collections::HashMap};
 
 use warp::{Filter};
 
@@ -55,11 +56,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             auction_ids.clear();
             auction_house::update_all_auctions(&mut auctions_hashed, &mut auction_ids).await;
         }
-        else {
-            auction_house::update_critical_auctions(&mut auctions_hashed, &mut auction_ids).await;
-        }
+        // else {
+        //     auction_house::update_critical_auctions(&mut auctions_hashed, &mut auction_ids).await;
+        // }
 
-        if time_until_update <= 1 { // refresh critcal pages
+        if time_until_update <= 10 { // refresh critcal pages
             auction_house::update_critical_auctions(&mut auctions_hashed, &mut auction_ids).await;
         }
 
@@ -67,7 +68,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             next_update = utils::get_duration_until_api_update2().await;
             auction_house::update_auctions_ended().await;
             auction_house::remove_expired_sales().await;
-            next_update = utils::get_duration_until_api_update2().await;
             auctions_hashed.clear();
             auction_ids.clear();
             auction_house::update_all_auctions(&mut auctions_hashed, &mut auction_ids).await;
