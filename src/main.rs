@@ -4,7 +4,6 @@ mod structs;
 mod utils;
 mod pets;
 mod auctions_ended;
-mod regular_items;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{fs, collections::HashMap};
