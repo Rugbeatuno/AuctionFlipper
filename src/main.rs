@@ -8,6 +8,7 @@ mod auctions_ended;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{fs, collections::HashMap};
 
+
 use warp::{Filter};
 
 
@@ -24,9 +25,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         warp::serve(routes).run(([127, 0, 0, 1], 5000)).await;
     });
 
-    // update page count
-    utils::update_pages_file(None).await;
+    flipper().await;
+    Ok(())
+}
 
+
+async fn flipper() {
+    println!("Flipper Started!");
     let mut next_update: u64 = 0;
     let holder: u64 = 0;
 
@@ -63,24 +68,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             auction_house::update_critical_auctions(&mut auctions_hashed, &mut auction_ids).await;
         }
 
-        if time_until_update < -10 {
+        if time_until_update < -5 {
             next_update = utils::get_duration_until_api_update2().await;
-            auction_house::update_auctions_ended().await;
-            auction_house::remove_expired_sales().await;
+            auctions_ended::update_auctions_ended().await;
             auctions_hashed.clear();
             auction_ids.clear();
             auction_house::update_all_auctions(&mut auctions_hashed, &mut auction_ids).await;
         }
 
     }
-    Ok(())
 }
 
 async fn get_flips() -> Result<impl warp::Reply, warp::Rejection> {
     let file: String = String::from("./src/files/flips.json");
-
     let data = fs::read_to_string(&file).expect("Unable to read file");
-
     let load_json: serde_json::Value = serde_json::from_str(&data).unwrap();
     Ok(warp::reply::json(&load_json))
 }

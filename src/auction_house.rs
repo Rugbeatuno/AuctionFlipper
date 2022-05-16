@@ -9,7 +9,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use cli_clipboard;
 
 use crate::structs::*;
-use crate::constants;
+use crate::constants::*;
 use crate::pets::*;
 
 
@@ -38,18 +38,11 @@ use crate::pets::*;
 // "bin": true,
 // "bids": [],
 // "item_uuid": "2058c2cbf3954cd783f762bbecdb90d5"
-const BLACKLISTED_ITEMS: [&str; 70] = ["Bonzo Head", "Scarf Head", "Professor Head", "Thorn Head", "Livid Head", "Large Storage", "Magma Boots", "Magma Leggings", "Magma Chestplate", "Magma Helmet", "Dirt Bottle", "Gift the Fish", "Spooky Pie", "Spirit Leap", "Beach Ball", "Kat Flower", "Endstone Rose", "Teleport Pad", "Plumber's Sponge", "Block of", "Superboom TNT", "Budget Hopper", "Trap", "Decoy", "Undead Bow", "null", "Training Dummy", "Midas Staff", "Bingo Card", "Null", "Hardened Diamond", "Shiny", "Maxor's", "Emerald Armor", "Ember Rod", "Super Heavy", "Holy Dragon", "Very Wise", "Odd Conjuring", "Stereo Pants", "Miner Helment", "Miner Chestplate", "Miner Leggings", "Miner Boots", "Shrimp the Fish", "Corleonite", "Young Dragon", "Unstable Dragon", "Old Dragon", "Protector Dragon", "Potion", "Skeleton Lord Helmet", "Bedrock", "Midas' Sword", "Repelling Candle", "Cake Soul", "Wild Strawberry Dye", "Tuxedo", "Shrub", "Anvil", "Perfect Helmet", "Perfect Chestplate", "Perfect Leggings", "Perfect Boots", "Rune", "Horse Armor", "Flame Ring", "Cobblestone Wall", "Crab Hat of Celebration", "Map"];
-const ROMAN_NUMERALS: [&str; 10] = [" I\n", " II\n", " III\n", " IV\n", " V\n", " VI\n", " VII\n", " VIII\n", " IX\n", " X\n"];
-const SECONDS_IN_WEEK: u64 = 604_800;
-const IGNORE_AUCTION_MIN: u64 = 7;
 
-const PATH_TO_CONVERSIONS: &str = "./src/files/id_conversions.json";
-const PATH_TO_FLIPS: &str = "./src/files/flips.json";
-const PATH_TO_SALES: &str = "./src/files/sales.json";
 // const PATH_TO_TARGETS: &str = "./src/files/targets.json";
 
 
-fn to_nbt(item_bytes: ItemBytes) -> Result<PartialNbt, Box<dyn std::error::Error>> {
+pub fn to_nbt(item_bytes: ItemBytes) -> Result<PartialNbt, Box<dyn std::error::Error>> {
     let bytes: StdResult<Vec<u8>, _> = item_bytes.into();
     let nbt: PartialNbt = nbt::from_gzip_reader(std::io::Cursor::new(bytes?))?;
     Ok(nbt)
@@ -267,37 +260,10 @@ fn process_page(req: serde_json::Value,  conversion_table: &mut HashMap<String, 
             // Formatted as TIER NAME LEVEL PET_ITEM CANDY_USED
             // Ex: RARE TIGER 78 DWARF_TURTLE_SHELMET 0
             if name.contains("[Lvl 100]") || name.contains("[Lvl 1]") { 
-                // if auction.tier == "COMMON" || auction.tier == "UNCOMMOM" || auction.tier == "RARE" {
-                //     continue;
-                // }
-                // let nbt = &to_nbt(serde_json::from_value(auc.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
-                // auction.pet_data = is_pet(nbt, auc.get("item_name").unwrap().as_str().unwrap().to_string());
-
-                // let pet_data = auction.clone().pet_data.unwrap();
-                // auction.id = format!("{} {} {} {} {}", pet_data.tier, pet_data.name, pet_data.level, pet_data.item, pet_data.candy);
-                // filtered_auctions.push(auction);
                 pet_case(&mut filtered_auctions, &mut auction);
                 continue;
             }
             else if auction.name.contains("Enchanted Book") {
-                // if auction.lore.contains("COMMON") || auction.lore.contains("UNCOMMON") {
-                //         continue;
-                //     }
-                //     // guard condition - removes any enchanted book with more than 2 enchants
-                //     let total_enchants = ROMAN_NUMERALS.iter().filter(|&num| auction.lore.contains(num) == true).count();
-                //     if total_enchants > 1 {
-                //         continue;
-                //     }
-
-                //     // Only books remaining have 1 enchant and are non-basic/default level enchants
-                //     let nbt = &to_nbt(serde_json::from_value(auc.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
-                //     let enchants = nbt.tag.extra_attributes.enchantments.as_ref().unwrap();
-                //     for (k, v) in enchants {
-                //         let new_id = format!("{}_{}", k, v);
-                //         auction.id = new_id.clone();
-                //         auction.name = new_id.clone();
-                //     }
-                //     filtered_auctions.push(auction);
                 book_case(&mut filtered_auctions, conversion_table, &mut auction, &auc);
                 continue;
             }
@@ -323,7 +289,7 @@ fn process_page(req: serde_json::Value,  conversion_table: &mut HashMap<String, 
 async fn fetch(url: String) -> serde_json::Value{
     let req = surf::get(url);
 
-    let res = constants::HTTP_CLIENT1.send(req).await;
+    let res = HTTP_CLIENT1.send(req).await;
         if res.is_ok() {
             let json = res.unwrap().body_json().await;
             if json.is_ok() {
@@ -410,6 +376,9 @@ fn find_flips(auctions: &HashMap<String, Vec<Auction>>) {
             fail_reason: None,
             // raw_price: 0,
         };
+        if (unix_timestamp - flip.lowest_bin.start) / 60 > IGNORE_AUCTION_MIN {
+            continue;
+        }  // if the auction has been up for more than 7 minutes ignore it (good auctions are sniped withing seconds)
 
         if flip.raw_price > avg_raw_price {
             continue;
@@ -428,9 +397,7 @@ fn find_flips(auctions: &HashMap<String, Vec<Auction>>) {
 
         // && flip.profit_percentage > min_profit_percentage
         if flip.flip_price > min_profit && flip.profit_percentage > min_profit_percentage && flip.lowest_bin.tier == flip.next_lowest_bin.tier {
-            if (unix_timestamp - flip.lowest_bin.start) / 60 < IGNORE_AUCTION_MIN {  // if the auction has been up for more than 10 minutes ignore it (good auctions are sniped withing seconds)
-                possible_flips.push(flip);
-            }
+            possible_flips.push(flip);
         }
         
     }
@@ -441,8 +408,10 @@ fn find_flips(auctions: &HashMap<String, Vec<Auction>>) {
     // possible_flips.sort_by_key(|f| f.flip_price.clone());
     if possible_flips.len() == 0 {
         failed_flips.sort_by_key(|f| f.flip_price.clone());
-        for flip in &failed_flips[failed_flips.len() - 1..] {
-            flip.print();
+        if failed_flips.len() > 1 {
+            for flip in &failed_flips[failed_flips.len() - 1..] {
+                flip.print();
+            }
         }
         return;
     }
@@ -460,11 +429,12 @@ fn find_flips(auctions: &HashMap<String, Vec<Auction>>) {
         }
     }
     open_auction(&possible_flips);
-    update_flips(&possible_flips);
-
     for flip in possible_flips.clone() {
         flip.print();
     }
+    
+    update_flips(&possible_flips);
+
     
     println!("---------------------------------")
 }
@@ -560,73 +530,7 @@ pub async fn update_all_auctions(auctions_hashed: &mut HashMap<String, Vec<Aucti
     // println!("Data: {}", data);
 }
 
-pub async fn update_auctions_ended() {
-    let req = fetch(String::from("https://api.hypixel.net/skyblock/auctions_ended")).await;
-    let auctions = req.get("auctions").unwrap().as_array().unwrap();
-    println!("Auctions ended: {}", auctions.len());
 
-    let mut sales: Vec<Sale> = Vec::new();
-
-    for auc in auctions {
-        // Guard case for non-BIN auctions
-        if !auc.get("bin").unwrap().as_bool().unwrap() {
-            continue;
-        }
-        let nbt = &to_nbt(serde_json::from_value(auc.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
-        let id = nbt.tag.extra_attributes.id.as_ref().unwrap();
-
-
-        // Convert from milliseconds to seconds
-        let mut sale = Sale {
-            id: id.to_string(),
-            data: SaleData {
-                price: auc.get("price").unwrap().as_u64().unwrap(),
-                timestamp: auc.get("timestamp").unwrap().as_u64().unwrap() / 1000, 
-                // buyer: auc.get("buyer").unwrap().as_str().unwrap().to_string(),
-            },
-        };
-
-        if id == "PET" {
-            let pet_data = is_pet(nbt, "".to_string()).unwrap();
-            sale.id = format!("{} {} {} {}", pet_data.tier, pet_data.name, pet_data.level, false);
-        }
-
-        else if id == "ENCHANTED_BOOK" {
-            match nbt.tag.extra_attributes.enchantments.as_ref() {
-                Some(e) => {
-                    if e.len() == 1 { 
-                        for (enchant, level) in e {
-                            sale.id = format!("{}_{}", enchant, level);
-                        }
-                    }
-                }
-                None => {}
-            };
-        }
-        
-        else {
-            
-        }
-        sales.push(sale);
-
-    }
-
-    update_json(sales);
-
-    // {"auction_id":"3fbfc20a9e484d3a87d40a6d308cb459",
-    // "bin":true,
-    // "buyer":"e5f012df66824a4ea5d7eba2cadbad23",PDcH/6sN7MjfLgl8TyROlsUfWL+GL25vhY+SFzQ7Z7Q3/3gtdOuPv6GEfPiLnGFMsDa69bgifknG2RJStyW/h/j58Q45pabEo8jmpXIf47jtCnxh36Xn0in53v/1K/69Jw8fkHePSZmxmNSnWbDqdNmQXKCuBhmVqxRaVyNi1qhjXyEyhVijha8LkJbMZshW3FJhc1yk9131InkcN8wQ5+TWbcJJVztmLtUxBhTJr7iyft9yClywlIDwgTIIpVYlZflXH1WYm+YLPkdJAnYBShXQwXkqm11L/B7vfwvywFXSPBJ1qtaK7tjpONS+taeo0DOkQd29/Z207moBdCniqlUVhc1VS0Lf/DfLqIH739he2blMTRVnjZ5nSpWlK+eDfGF7DQ/chHUORcWoSs6oh1ZjQnMnaHzdulb67h6z1wGd1Sbi4Ytw2FefW0hvqR9TCr25voklFN5+hZceqrMwhe5kbZMeFUrK56VGSF7nN64rzN1in8Q+CdR6iayq14CVnQhlbc35CnLc3xZOT05Oz8dHFT+z4/PzZrAtbQhVKw/6ff/Rg84wvED4n5AvU123KseZzKtWxUtZAH3ZPfraaH1karaSyaHqwnShjphL2IjeI0nAUOWIQDpyB58ZOIuOh40aCp6FwvZRHPeibJV+VKCeUdG8YhtIbycAJMAicQewnTux5ieOlsfC9aJAELu1Vb6FknuaoYXNFknrNgn74cjo7uRxfHJ2en102d+nD+/UyU2MWSM3pwn1Zr8GladeAatDtwrZtGtm+7KbtNF+m7TSTdYsg82ak2pf+8p9xqQ30XdisKkq/h8MgoPUdOXwQC2eAQ+GMRrHvRD56Pmn3opHXgx2bL9BYvljCB4MD78D3mXcYRuzpjwAbsD1uJoKI4W898rF2rAQAAA==",
-    // "price":1700000,
-    // "item_bytes":"H4sIAAAAAAAAAF1U3W7jRBQ+adqSZlkqBAgQPzuCrkSFvPVP7MS9a0nTjbS0q2Z/hFarajxzHFt1PNHMeEPfgCuegL1D6nv0UXrHHU+AOLazILhIxj7nO9/55vy4D7ADnbwPAJ0N2Mhlx+nA1g+qKm2nD13L5zuwiaXI1ohu8aaAboOEHnTg3vMy0civeFJgpws7j3OJk4L
-    // "seller":"f1678ca543524f65935840f2a6857a7e",
-    // "seller_profile":"989723505eda48bd83566c2c7d5c303b",
-    // "timestamp":1650575019125}
-    //l
-    // {TAG_String('bossId'): 6036f586-c454-4109-bd97-06caf5c01fa6, TAG_String('spawnedFor'): 755d18d3-3e33-492b-911b-1f9c2164b30e, TAG_String('modifier'): wise, TAG_String('id'): WISE_DRAGON_BOOTS, TAG_Compound('enchantments'): {5 Entries}, TAG_String('uuid'): e7331058-a49c-4e7c-8892-62e122161681, TAG_String('timestamp'): 4/1/22 1:56 PM}
-
-
-    
-}
 
 fn update_flips(flips: &Vec<Flip>) {
     let file: String = String::from(PATH_TO_FLIPS);
@@ -669,46 +573,9 @@ fn additional_costs(auctions: &HashMap<String, Vec<Auction>>, price_data: &Optio
     }
 }
 
-fn update_json(new_sales: Vec<Sale>) {
-    let file: String = String::from(PATH_TO_SALES);
-
-    let data = fs::read_to_string(&file).expect("Unable to read file");
-
-    let mut load_json: HashMap<String, Vec<SaleData>> = HashMap::new();
-    if fs::metadata(&file).unwrap().len() != 0 {
-        load_json = serde_json::from_str(&data).unwrap();
-    }
-
-    for sale in new_sales {
-        load_json.entry(sale.id).or_default().push(sale.data);
-    }
-
-    let json: String = serde_json::to_string(&load_json).unwrap();
-
-    fs::write(file, &json).expect("Unable to write file");
-}
 
 
 
-
-pub async fn remove_expired_sales() {
-    let unix_timestamp: u64 = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-
-    let file: String = String::from(PATH_TO_SALES);
-    let data: String = fs::read_to_string(&file).expect("Unable to read file");
-
-    let mut load_json: HashMap<String, Vec<SaleData>> = HashMap::new();
-    if fs::metadata(&file).unwrap().len() != 0 {
-        load_json = serde_json::from_str(&data).unwrap();
-    }
-    // Sale is stored where each sale is a HashMap stored in a Vec (Some idiot)
-    for key in load_json.clone().keys() {// [ [{}] ]
-        load_json.get_mut(key).unwrap().retain(|sale| unix_timestamp - &sale.timestamp < SECONDS_IN_WEEK);
-    }
-    let json: String = serde_json::to_string(&load_json).unwrap();
-
-    fs::write(file, &json).expect("Unable to write file");
-}
 
 fn open_auction(flips: &Vec<Flip>) {
     if flips.len() > 0 {

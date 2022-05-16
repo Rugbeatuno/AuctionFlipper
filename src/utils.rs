@@ -1,11 +1,11 @@
 use std::collections::HashMap;
-use std::fs;
+// use std::fs;
 use crate::{constants, structs};
 use std::time::{SystemTime, UNIX_EPOCH};
 extern crate colored;
 use colored::*;
 
-const PATH_TO_PAGES: &str = "./src/files/pages.txt";
+// const PATH_TO_PAGES: &str = "./src/files/pages.txt";
 
 pub fn prettify_large_nums(num: usize) -> String {
     let mut conversions: HashMap<String, char> = HashMap::new();
@@ -96,26 +96,19 @@ pub async fn get_duration_until_api_update2() -> u64 {
 }
 
 
-pub async fn update_pages_file(p: Option<u64>) {
-    let mut pages: u64 = p.unwrap_or(0);
-    let file: String = String::from(PATH_TO_PAGES);
-    
-    if pages == 0 {
-        let req = surf::get("https://api.hypixel.net/skyblock/auctions");
-        let res = constants::HTTP_CLIENT1.send(req).await;
-        let json = res.unwrap().body_json().await;
-        let json: serde_json::Value = json.unwrap();
-    
-        pages = match json.get("totalPages") {
-            Some(p) => p.as_u64().unwrap(),
-            None => 0
-        };
-    }
-    
-    let json: String = serde_json::to_string(&pages).unwrap();
-    fs::write(file, &json).expect("Unable to write file");
+pub async fn fetch(url: String) -> serde_json::Value{
+    let req = surf::get(url);
 
-}
+    let res = constants::HTTP_CLIENT1.send(req).await;
+        if res.is_ok() {
+            let json = res.unwrap().body_json().await;
+            if json.is_ok() {
+                return json.unwrap();
+            }    
+        }    
+
+    serde_json::Value::Null    
+} 
 
 
 

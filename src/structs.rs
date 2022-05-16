@@ -133,7 +133,7 @@ pub struct PartialExtraAttr {
     pub id: Option<String>,
     pub enchantments: Option<HashMap<String, i32>>,
     pub modifier: Option<String>,
-    pub item_tier: Option<u8>,
+    pub item_tier: Option<u8>, // Obtained on floor
     pub rarity_upgrades: Option<u8>,
     pub hot_potato_count: Option<u8>,
     pub dungeon_item_level: Option<u8>,
