@@ -1,2 +1,2 @@
-/target
-!/target/release
+/target/*
+!/target/x86_64-apple-darwin/release
