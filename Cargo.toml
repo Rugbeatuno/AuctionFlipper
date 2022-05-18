@@ -5,9 +5,9 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[lib]
-name = "auctionhouse"
-crate-type = ["rlib", "cdylib"]
+# [lib]
+# name = "auctionhouse"
+# crate-type = ["rlib", ""]
 
 
 [dependencies]
@@ -27,6 +27,7 @@ cli-clipboard = "0.2.1"
 colored = "2.0.0"
 warp = "0.3"
 uuid = { version = "1.0.0", features = ["serde", "v4"]}
+
 
 
 
