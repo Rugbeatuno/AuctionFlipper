@@ -1,1 +1,1 @@
-web: ./target/x86_64-apple-darwin/release/auctionhouse
+web: ./target/release/auctionhouse
