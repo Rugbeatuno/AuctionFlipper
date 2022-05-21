@@ -1,1 +1,1 @@
-web: ./target/release/auctionhouse
+web: ./target/release/AuctionFlipperNode
