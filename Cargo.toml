@@ -6,21 +6,22 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tokio = { version = "1.17.0", features = ["macros", "rt-multi-thread"] }
-serde = { version = "1.0", features = ["derive"] }
 json = "0.12.4"
-serde_json = "1.0.79"
 serde_derive = "1.0.136"
-surf = { version = "2.3.2", features = ["curl-client"] }
-futures = { version = "0.3", default-features = false }
-lazy_static = "1.4.0"
-base64 = "0.13.0"
-hematite-nbt = "0.5.2"
-chrono = { version = "0.4.19", features = ["serde"] }
 cli-clipboard = "0.2.1"
 colored = "2.0.0"
 warp = "0.3"
-uuid = { version = "1.0.0", features = ["serde", "v4"]}
+tokio = { version = "1.18.2", features = ["macros", "rt-multi-thread"] }
+serde = { version = "1.0.137", features = ["derive"] }
+dashmap = { version = "5.3.3", features = ["serde"] }
+hematite-nbt = "0.5.2"
+lazy_static = "1.4.0"
+futures = "0.3.21"
+base64 = "0.13.0"
+dotenv = "0.15.0"
+chrono = "0.4.19"
+serde_json = "1.0.81"
+surf = { version = "2.3.2", features = ["curl-client"] }
 
 
  
