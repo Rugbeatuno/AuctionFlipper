@@ -138,7 +138,7 @@ fn format_sale_for_sales(auction: &serde_json::Value) -> Sale {
 // 1) we update sales.json which is much less detailed than targets.json
 // 2) update targets.json with detailed keys
 pub async fn update_auctions_ended() {
-    let req = utils::fetch(String::from("https://api.hypixel.net/skyblock/auctions_ended")).await;
+    let req: serde_json::Value = utils::fetch(String::from("https://api.hypixel.net/skyblock/auctions_ended")).await;
     let auctions = req.get("auctions").unwrap().as_array().unwrap();
     println!("Auctions ended: {}", auctions.len());
 
