@@ -1,17 +1,11 @@
 [package]
-name = "auctionhouse"
+name = "AuctionFlipperNode"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-# [lib]
-# name = "auctionhouse"
-# crate-type = ["rlib", ""]
-
-
 [dependencies]
-# reqwest = { version = "0.11.10", features = ["blocking", "json"] }
 tokio = { version = "1.17.0", features = ["macros", "rt-multi-thread"] }
 serde = { version = "1.0", features = ["derive"] }
 json = "0.12.4"
@@ -29,8 +23,7 @@ warp = "0.3"
 uuid = { version = "1.0.0", features = ["serde", "v4"]}
 
 
-
-
+ 
 [profile.release]
 codegen-units = 1
 debug = true
@@ -39,23 +32,3 @@ lto = true
 opt-level = 3
 overflow-checks = true
 panic = "abort"
-
-
-# On Windows 
-# ```
-# cargo install -f cargo-binutils
-[target.x86_64-apple-darwin]
-rustflags = [
-  "-C", "link-arg=-undefined",
-  "-C", "link-arg=dynamic_lookup",
-]
-
-[target.aarch64-apple-darwin]
-rustflags = [
-  "-C", "link-arg=-undefined",
-  "-C", "link-arg=dynamic_lookup",
-]
-
-[target.x86_64-unknown-linux-musl]
-linker = "x86_64-linux-musl-gcc"
-CC_x86_64_unknown_linux_musl="x86_64-linux-musl-gcc" 

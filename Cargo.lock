@@ -3,6 +3,27 @@
 version = 3
 
 [[package]]
+name = "AuctionFlipperNode"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "chrono",
+ "cli-clipboard",
+ "colored",
+ "futures",
+ "hematite-nbt",
+ "json",
+ "lazy_static 1.4.0",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "surf",
+ "tokio",
+ "uuid",
+ "warp",
+]
+
+[[package]]
 name = "addr2line"
 version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -223,27 +244,6 @@ dependencies = [
  "libc",
  "termion",
  "winapi",
-]
-
-[[package]]
-name = "auctionhouse"
-version = "0.1.0"
-dependencies = [
- "base64",
- "chrono",
- "cli-clipboard",
- "colored",
- "futures",
- "hematite-nbt",
- "json",
- "lazy_static 1.4.0",
- "serde",
- "serde_derive",
- "serde_json",
- "surf",
- "tokio",
- "uuid",
- "warp",
 ]
 
 [[package]]
