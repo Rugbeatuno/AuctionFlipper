@@ -6,7 +6,7 @@ use futures::{stream::FuturesUnordered, StreamExt};
 use std::{str, fs, iter::Iterator, collections::HashMap};
 use std::{result::Result as StdResult};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
-use cli_clipboard;
+// use cli_clipboard;
 
 use crate::structs::*;
 use crate::constants::*;
@@ -578,13 +578,13 @@ fn additional_costs(auctions: &HashMap<String, Vec<Auction>>, price_data: &Optio
 
 
 fn open_auction(flips: &Vec<Flip>) {
-    if flips.len() > 0 {
-        let top_auc = &flips[flips.len()-1];
-        let cmd = format!("/viewauction {}", top_auc.lowest_bin.uuid);
-        // let current_clipboard = cli_clipboard::get_contents().unwrap();
+    // if flips.len() > 0 {
+    //     let top_auc = &flips[flips.len()-1];
+    //     let cmd = format!("/viewauction {}", top_auc.lowest_bin.uuid);
+    //     // let current_clipboard = cli_clipboard::get_contents().unwrap();
 
-        cli_clipboard::set_contents(cmd.to_owned()).unwrap();
-        assert_eq!(cli_clipboard::get_contents().unwrap(), cmd);
-    }
+    //     cli_clipboard::set_contents(cmd.to_owned()).unwrap();
+    //     assert_eq!(cli_clipboard::get_contents().unwrap(), cmd);
+    // }
 }
 

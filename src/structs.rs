@@ -5,8 +5,8 @@ use serde_derive::{Serialize, Deserialize};
 use crate::utils;
 use std::collections::HashMap;
 
-extern crate colored;
-use colored::*;
+// extern crate colored;
+// use colored::*;
 
 
 // Auction structs
@@ -62,19 +62,19 @@ impl Flip {
         // This means that this flip would cause you to flip the item then more than it is normally worth
         // Could mean over bidding - indicated by red
         // if self.lowest_bin.price + self.flip_price as u64 > self.avg_raw_price {
-        if self.fail_reason != None {
-            println!("{} - {}", self.lowest_bin.name.underline().red(), self.fail_reason.as_ref().unwrap().red());
-        }
-        else {
-            let colored_name = utils::rarity_to_color(self);
-            println!("{}", colored_name);
-        }
-        println!("Estimated Profit: {}", format!("+{} ({}%)", utils::prettify_large_nums(self.flip_price), self.profit_percentage).green());
-        // println!("Profit: {}%", self.profit_percentage.to_string().green());
-        println!("Price: {} -> {}", utils::prettify_large_nums(self.lowest_bin.price.try_into().unwrap()).yellow(), utils::prettify_large_nums(self.next_lowest_bin.price as usize).bright_black());
-        println!("Est. Raw Price: {} < {}", raw_price.green(), est_raw_price.green());
-        println!("Volume: {}", self.volume.to_string().cyan());
-        println!("Sales Last Hour: {}", self.last_hour_volume.to_string().cyan());
+        // if self.fail_reason != None {
+        //     println!("{} - {}", self.lowest_bin.name.underline().red(), self.fail_reason.as_ref().unwrap().red());
+        // }
+        // else {
+        //     let colored_name = utils::rarity_to_color(self);
+        //     println!("{}", colored_name);
+        // }
+        // println!("Estimated Profit: {}", format!("+{} ({}%)", utils::prettify_large_nums(self.flip_price), self.profit_percentage).green());
+        // // println!("Profit: {}%", self.profit_percentage.to_string().green());
+        // println!("Price: {} -> {}", utils::prettify_large_nums(self.lowest_bin.price.try_into().unwrap()).yellow(), utils::prettify_large_nums(self.next_lowest_bin.price as usize).bright_black());
+        // println!("Est. Raw Price: {} < {}", raw_price.green(), est_raw_price.green());
+        // println!("Volume: {}", self.volume.to_string().cyan());
+        // println!("Sales Last Hour: {}", self.last_hour_volume.to_string().cyan());
         println!("Cmd: /viewauction {}", self.lowest_bin.uuid);
         println!("")
     }
