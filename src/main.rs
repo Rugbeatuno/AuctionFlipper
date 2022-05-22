@@ -69,7 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .and_then(get_flips);
     
         let routes = get_items;
-        warp::serve(routes).run(([0, 0, 0, 0], 5000)).await;
+        warp::serve(routes).run(([0, 0, 0, 0], 8000)).await;
     });
 
     flipper().await;

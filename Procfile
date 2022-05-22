@@ -1,1 +1,1 @@
-web: ./target/release/AuctionFlipperNode
+web: PORT=$PORT ./target/release/AuctionFlipperNode
