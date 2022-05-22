@@ -48,7 +48,7 @@ pub async fn flipper() {
             auction_house::update_critical_auctions(&mut auctions_hashed, &mut auction_ids).await;
         }
 
-        if time_until_update < -5 {
+        if time_until_update < -3 {
             next_update = utils::get_duration_until_api_update2().await;
             auctions_ended::update_auctions_ended().await;
             auctions_hashed.clear();
@@ -69,7 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .and_then(get_flips);
     
         let routes = get_items;
-        warp::serve(routes).run(([127, 0, 0, 1], 5000)).await;
+        warp::serve(routes).run(([0, 0, 0, 0], 5000)).await;
     });
 
     flipper().await;
@@ -79,7 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 
 async fn get_flips() -> Result<impl warp::Reply, warp::Rejection> {
-    let file: String = String::from("./src/files/flips.json");
+    let file: String = String::from(constants::PATH_TO_FLIPS);
     let data = fs::read_to_string(&file).expect("Unable to read file");
     let load_json: serde_json::Value = serde_json::from_str(&data).unwrap();
     Ok(warp::reply::json(&load_json))

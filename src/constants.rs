@@ -10,10 +10,10 @@ pub const IGNORE_AUCTION_MIN: u64 = 7;
 pub const SECONDS_IN_WEEK: u64 = 604_800;
 pub const SECONDS_IN_MONTH: u64 = SECONDS_IN_WEEK * 4;
 
-pub const PATH_TO_CONVERSIONS: &str = "./src/files/id_conversions.json";
-pub const PATH_TO_FLIPS: &str = "./src/files/flips.json";
-pub const PATH_TO_SALES: &str = "./src/files/sales.json";
-pub const PATH_TO_TARGETS: &str = "./src/files/targets.json";
+pub const PATH_TO_CONVERSIONS: &str = "./files/id_conversions.json";
+pub const PATH_TO_FLIPS: &str = "./files/flips.json";
+pub const PATH_TO_SALES: &str = "./files/sales.json";
+pub const PATH_TO_TARGETS: &str = "./files/targets.json";
 
 lazy_static! {
     pub static ref HTTP_CLIENT1: surf::Client = surf::Config::new()
