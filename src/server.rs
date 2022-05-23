@@ -8,7 +8,6 @@ use std::env;
 
 async fn response(_: Request<Body>) -> Result<Response<Body>, Infallible> {
     let resp: serde_json::Value = get_flips().await;
-    println!("{}", resp);
     Ok(Response::builder()
     .status(StatusCode::OK)
     .header(header::CONTENT_TYPE, "application/json")

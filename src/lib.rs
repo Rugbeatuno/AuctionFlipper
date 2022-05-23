@@ -8,6 +8,7 @@ mod auctions_ended;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::collections::HashMap;
 
+#[no_mangle]
 pub async fn flipper() {
     println!("Flipper Started!");
     let holder: u64 = 0;

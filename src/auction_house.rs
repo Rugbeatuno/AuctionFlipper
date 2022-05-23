@@ -1,7 +1,5 @@
-extern crate serde_json;
-extern crate serde_derive;
-extern crate base64;
-extern crate json;
+use serde_json;
+
 use futures::{stream::FuturesUnordered, StreamExt};
 use std::{str, fs, iter::Iterator, collections::HashMap};
 use std::{result::Result as StdResult};
