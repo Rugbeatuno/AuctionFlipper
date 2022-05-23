@@ -14,6 +14,7 @@ pub const PATH_TO_CONVERSIONS: &str = "./files/id_conversions.json";
 pub const PATH_TO_FLIPS: &str = "./files/flips.json";
 pub const PATH_TO_SALES: &str = "./files/sales.json";
 pub const PATH_TO_TARGETS: &str = "./files/targets.json";
+pub const PATH_TO_NEXT_UPDATE_FILE: &str = "./files/next_update.txt";
 
 lazy_static! {
     pub static ref HTTP_CLIENT1: surf::Client = surf::Config::new()

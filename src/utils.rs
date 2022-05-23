@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, vec, fs};
 // use std::fs;
 use crate::{constants, structs};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -64,7 +64,7 @@ pub fn rarity_to_color(flip: &structs::Flip) -> String {
 
 
 // Uses cloudflare age headers
-pub async fn get_duration_until_api_update2() -> u64 {
+pub async fn get_next_api_update() -> u64 {
     let res = constants::HTTP_CLIENT1
         .get("https://api.hypixel.net/skyblock/auctions?page=0")
         .send()
@@ -95,6 +95,28 @@ pub async fn get_duration_until_api_update2() -> u64 {
 }
 
 
+// pub async fn get_update_times() -> Vec<u64> {
+//     let unix_timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+//     let next_update = get_next_api_update().await;
+//     let time_until_update = next_update - unix_timestamp;
+
+//     let mut times: Vec<u64> = vec![];
+
+//     // If the time until next update is 20s or 40s update entire auction house
+//     // non-essential auctions
+//     times.push(next_update - 20);
+//     times.push(next_update - 40);
+
+//     // from 8s prior to update to 3s after update
+//     // essential auctions
+//     for i in next_update-8..next_update+4 {
+//         times.push(i);
+//     }
+
+//     times
+// }
+
+
 pub async fn fetch(url: String) -> serde_json::Value{
     let req = surf::get(url);
 
@@ -111,13 +133,6 @@ pub async fn fetch(url: String) -> serde_json::Value{
 
 
 
-// pub fn get_page_file() -> u64 {
-//     let file: String = String::from(PATH_TO_PAGES);
-//     let data = fs::read_to_string(&file).expect("Unable to read file");
-//     let mut pages: u64 = 0;
-//     if fs::metadata(&file).unwrap().len() != 0 {
-//         pages = data.parse().unwrap();
-//     }
-//     return pages;
-
-// }
+pub fn save_next_update(next_update: u64) {
+    fs::write(constants::PATH_TO_NEXT_UPDATE_FILE, next_update.to_string()).expect("Unable to write file");
+}

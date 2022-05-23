@@ -38,10 +38,12 @@ pub async fn start_server() -> Result<(), Box<dyn std::error::Error + Send + Syn
 
 async fn get_flips() -> String {
     let file: String = String::from("./files/flips.json");
-    let data = fs::read_to_string(&file).expect("Unable to read file");
+    let next_update = fs::read_to_string("./files/next_update.txt").expect("Unable to read file");
+    let flips: String = fs::read_to_string(&file).expect("Unable to read file");
+    let str_json = format!("[{{\"next_update\": {}}}, \"flips\": {}]", next_update, flips);
     // let load_json: serde_json::Value = serde_json::from_str(&data).unwrap();
     // Ok(warp::reply::json(&load_json))
-    data
+    str_json
 }
 
 
