@@ -11,6 +11,7 @@ dependencies = [
  "colored",
  "futures",
  "hematite-nbt",
+ "hyper",
  "json",
  "lazy_static",
  "serde",

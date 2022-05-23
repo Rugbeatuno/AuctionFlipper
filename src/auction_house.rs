@@ -420,15 +420,15 @@ fn find_flips(auctions: &HashMap<String, Vec<Auction>>) {
     if possible_flips[possible_flips.len()-1].flip_price < 3_000_000 {
         possible_flips.sort_by_key(|f| f.volume.clone());
         if possible_flips.len() > 0 && possible_flips[possible_flips.len()-1].volume > 70 {
-            open_auction(&possible_flips);
+            // open_auction(&possible_flips);
         }
         else {
             possible_flips.sort_by_key(|f| f.flip_price.clone());
-            open_auction(&possible_flips);
+            // open_auction(&possible_flips);
 
         }
     }
-    open_auction(&possible_flips);
+    // open_auction(&possible_flips);
     for flip in possible_flips.clone() {
         flip.print();
     }
@@ -577,7 +577,7 @@ fn additional_costs(auctions: &HashMap<String, Vec<Auction>>, price_data: &Optio
 
 
 
-fn open_auction(flips: &Vec<Flip>) {
+// fn open_auction(flips: &Vec<Flip>) {
     // if flips.len() > 0 {
     //     let top_auc = &flips[flips.len()-1];
     //     let cmd = format!("/viewauction {}", top_auc.lowest_bin.uuid);
@@ -586,5 +586,5 @@ fn open_auction(flips: &Vec<Flip>) {
     //     cli_clipboard::set_contents(cmd.to_owned()).unwrap();
     //     assert_eq!(cli_clipboard::get_contents().unwrap(), cmd);
     // }
-}
+// }
 
