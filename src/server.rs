@@ -7,7 +7,7 @@ use std::{fs};
 use std::env;
 
 async fn response(_: Request<Body>) -> Result<Response<Body>, Infallible> {
-    let resp = get_flips().await;
+    let resp: serde_json::Value = get_flips().await;
     Ok(Response::builder()
     .status(StatusCode::OK)
     .header(header::CONTENT_TYPE, "application/json")
@@ -40,14 +40,14 @@ pub async fn start_server() -> Result<(), Box<dyn std::error::Error + Send + Syn
 
 
 
-async fn get_flips() -> String {
+async fn get_flips() -> serde_json::Value {
     let file: String = String::from("./files/flips.json");
     let next_update = fs::read_to_string("./files/next_update.txt").expect("Unable to read file");
     let flips: String = fs::read_to_string(&file).expect("Unable to read file");
     let str_json = format!("[{{\"next_update\": {}}}, \"flips\": {}]", next_update, flips);
-    // let load_json: serde_json::Value = serde_json::from_str(&data).unwrap();
+    let json: serde_json::Value = serde_json::from_str(&str_json).unwrap();
     // Ok(warp::reply::json(&load_json))
-    str_json
+    json
 }
 
 
