@@ -8,6 +8,7 @@ use std::env;
 
 async fn response(_: Request<Body>) -> Result<Response<Body>, Infallible> {
     let resp: serde_json::Value = get_flips().await;
+    println!("{}", resp);
     Ok(Response::builder()
     .status(StatusCode::OK)
     .header(header::CONTENT_TYPE, "application/json")
@@ -44,12 +45,11 @@ async fn get_flips() -> serde_json::Value {
     let file: String = String::from("./files/flips.json");
     let next_update = fs::read_to_string("./files/next_update.txt").expect("Unable to read file");
     let flips: String = fs::read_to_string(&file).expect("Unable to read file");
-    let str_json = format!("[{{\"next_update\": {}}}, \"flips\": {}]", next_update, flips);
+    let str_json = format!("[{{\"next_update\": {}, \"flips\": {}}}]", next_update, flips);
     let json: serde_json::Value = serde_json::from_str(&str_json).unwrap();
     // Ok(warp::reply::json(&load_json))
     json
 }
-
 
 fn get_port() -> u16 {
     env::var("PORT").unwrap_or_else(|_| 3000.to_string()).to_string().parse::<u16>().unwrap()
