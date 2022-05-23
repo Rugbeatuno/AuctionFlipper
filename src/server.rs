@@ -1,14 +1,18 @@
 use std::convert::Infallible;
 
 use hyper::service::{make_service_fn, service_fn};
-use hyper::{Body, Request, Response, Server};
+use hyper::{header, Body, StatusCode, Request, Response, Server};
 
 use std::{fs};
 use std::env;
 
-async fn hello(_: Request<Body>) -> Result<Response<Body>, Infallible> {
+async fn response(_: Request<Body>) -> Result<Response<Body>, Infallible> {
     let resp = get_flips().await;
-    Ok(Response::new(Body::from(resp)))
+    Ok(Response::builder()
+    .status(StatusCode::OK)
+    .header(header::CONTENT_TYPE, "application/json")
+    .body(Body::from(serde_json::to_vec(&resp).unwrap()))
+    .unwrap())
 }
 
 pub async fn start_server() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -20,7 +24,7 @@ pub async fn start_server() -> Result<(), Box<dyn std::error::Error + Send + Syn
         // This is the `Service` that will handle the connection.
         // `service_fn` is a helper to convert a function that
         // returns a Response into a `Service`.
-        async { Ok::<_, Infallible>(service_fn(hello)) }
+        async { Ok::<_, Infallible>(service_fn(response)) }
     });
 
     let addr = ([0, 0, 0, 0], get_port()).into();
