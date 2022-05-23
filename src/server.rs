@@ -23,7 +23,7 @@ pub async fn start_server() -> Result<(), Box<dyn std::error::Error + Send + Syn
         async { Ok::<_, Infallible>(service_fn(hello)) }
     });
 
-    let addr = ([127, 0, 0, 1], get_port()).into();
+    let addr = ([0, 0, 0, 0], get_port()).into();
 
     let server = Server::bind(&addr).serve(make_svc);
 
