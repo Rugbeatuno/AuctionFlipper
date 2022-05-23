@@ -6,7 +6,7 @@ mod pets;
 mod auctions_ended;
 
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::{collections::HashMap};
+use std::collections::HashMap;
 
 pub async fn flipper() {
     println!("Flipper Started!");
