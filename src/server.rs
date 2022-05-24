@@ -2,18 +2,24 @@ use std::convert::Infallible;
 
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{header, Body, StatusCode, Request, Response, Server};
-
 use std::{fs};
 use std::env;
 
+
+
 async fn response(_: Request<Body>) -> Result<Response<Body>, Infallible> {
+
     let resp: serde_json::Value = get_flips().await;
     Ok(Response::builder()
     .status(StatusCode::OK)
     .header(header::CONTENT_TYPE, "application/json")
+    .header("Access-Control-Allow-Origin", "*")
+    .header("Access-Control-Allow-Headers", "*")
+    .header("Access-Control-Allow-Methods", "GET")
     .body(Body::from(serde_json::to_vec(&resp).unwrap()))
     .unwrap())
 }
+
 
 pub async fn start_server() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // pretty_env_logger::init();
