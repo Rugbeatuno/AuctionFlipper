@@ -88,7 +88,12 @@ fn format_sale_for_target(auction: &serde_json::Value) -> Option<Sale> {
 
     // Normal items are just ISRECOMBED-REFORGE-NAME-STARS
     else {
-        let is_recombed: u8 = nbt.tag.extra_attributes.rarity_upgrades?;
+        
+        let is_recombed: bool = match nbt.tag.extra_attributes.rarity_upgrades {
+            Some(_) => true,
+            None => false,
+        };
+        println!("{} {}", id, is_recombed);
         let reforge: &String = nbt.tag.extra_attributes.modifier.as_ref()?;
         let id: String = sale.id;
         let stars: u8 = nbt.tag.extra_attributes.dungeon_item_level?;
