@@ -1,23 +1,44 @@
 use std::convert::Infallible;
 
 use hyper::service::{make_service_fn, service_fn};
-use hyper::{header, Body, StatusCode, Request, Response, Server};
+use hyper::{header, Body, StatusCode, Request, Response, Server, Method};
 use std::{fs};
 use std::env;
 
 
 
-async fn response(_: Request<Body>) -> Result<Response<Body>, Infallible> {
+async fn response(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+    let method = req.method().clone();
+    let uri = req.uri().clone();
+    let path = uri.path();
 
-    let resp: serde_json::Value = get_flips().await;
-    Ok(Response::builder()
-    .status(StatusCode::OK)
-    .header(header::CONTENT_TYPE, "application/json")
-    .header("Access-Control-Allow-Origin", "*")
-    .header("Access-Control-Allow-Headers", "*")
-    .header("Access-Control-Allow-Methods", "GET")
-    .body(Body::from(serde_json::to_vec(&resp).unwrap()))
-    .unwrap())
+    match (method, path) {
+        (Method::GET, "/flips") => {
+            let resp: serde_json::Value = get_flips().await;
+            Ok(Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, "application/json")
+            .header("Access-Control-Allow-Origin", "*")
+            .header("Access-Control-Allow-Headers", "*")
+            .header("Access-Control-Allow-Methods", "GET")
+            .body(Body::from(serde_json::to_vec(&resp).unwrap()))
+            .unwrap())
+        }
+
+        (_method, _path) => { 
+            Ok(Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .header(header::CONTENT_TYPE, "application/json")
+            .header("Access-Control-Allow-Origin", "*")
+            .header("Access-Control-Allow-Headers", "*")
+            .header("Access-Control-Allow-Methods", "GET")
+            .body(Body::from(serde_json::to_vec("Invalid Endpoint!").unwrap()))
+            .unwrap())
+        }
+
+        // (Method::GET, "/target")
+    }
+    
 }
 
 
