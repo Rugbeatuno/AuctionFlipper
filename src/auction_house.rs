@@ -359,44 +359,34 @@ fn find_flips(auctions: &HashMap<String, Vec<Auction>>) {
             }
         }
 
-        let mut flip = Flip {
+        let last_hour_volume = match load_json.get(&auc[0].id) {
+            Some(sales) => sales.iter().filter(|i| unix_timestamp - i.timestamp < 3600).count(),
+            None => 0
+        };
+
+        let flip = Flip {
+            flip_type: FlipType::LBin,
             flip_price: flip_price.try_into().unwrap(),
             profit_percentage: (flip_price * 100 / lowest_price).try_into().unwrap(),
             lowest_bin: auc[0].clone(),
             next_lowest_bin: auc[1].clone(),
-            volume: volume,
-            last_hour_volume: match load_json.get(&auc[0].id) {
-                Some(sales) => sales.iter().filter(|i| unix_timestamp - i.timestamp < 3600).count(),
-                None => 0,
-            },
+            volume,
+            last_hour_volume,
             raw_price: if auc[0].price > additional_costs {auc[0].price - additional_costs} else {auc[0].price},
-            avg_raw_price: avg_raw_price,
+            avg_raw_price,
             fail_reason: None,
-            // raw_price: 0,
         };
-        if (unix_timestamp - flip.lowest_bin.start) / 60 > IGNORE_AUCTION_MIN {
-            continue;
-        }  // if the auction has been up for more than 7 minutes ignore it (good auctions are sniped withing seconds)
 
-        if flip.raw_price > avg_raw_price {
+        if (unix_timestamp - flip.lowest_bin.start) / 60 > IGNORE_AUCTION_MIN || // if the auction has been up for more than 7 minutes ignore it (good auctions are sniped within seconds)
+            flip.raw_price > avg_raw_price || // Overpay
+            (flip.lowest_bin.price + flip.flip_price as u64) as f32 / flip.avg_raw_price as f32 > 1.2 || // If profit margin is largley inflated over 20%
+            flip.lowest_bin.seller == "1d7a1fd3350546efa653389dfa00ea85"  || // If is my auction
+            flip.flip_price < min_profit || 
+            flip.profit_percentage < min_profit_percentage ||
+            flip.lowest_bin.tier != flip.next_lowest_bin.tier { 
             continue;
-        }
-
-        if (flip.lowest_bin.price + flip.flip_price as u64) as f32 / flip.avg_raw_price as f32 > 1.2 {
-            flip.fail_reason = Some("Possibly Overvalued".to_string());
-            failed_flips.push(flip);
-            continue;
-        }
-
-        // If the seller is me
-        if flip.lowest_bin.seller == "1d7a1fd3350546efa653389dfa00ea85" {
-            continue;
-        }
-
-        // && flip.profit_percentage > min_profit_percentage
-        if flip.flip_price > min_profit && flip.profit_percentage > min_profit_percentage && flip.lowest_bin.tier == flip.next_lowest_bin.tier {
-            possible_flips.push(flip);
-        }
+        }  
+        possible_flips.push(flip);
         
     }
 

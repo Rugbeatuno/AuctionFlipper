@@ -96,7 +96,10 @@ fn format_sale_for_target(auction: &serde_json::Value) -> Option<Sale> {
         let reforge: &String = nbt.tag.extra_attributes.modifier.as_ref()?;
         let id: String = sale.id;
         let stars: u8 = nbt.tag.extra_attributes.dungeon_item_level?;
-        sale.id = format!("{}-{}-{}-{}", is_recombed, reforge, id, stars);
+        let hpb: u8 = nbt.tag.extra_attributes.hot_potato_count?;
+        let fpb: u8 = if hpb > 10 {hpb - 10} else {0};
+
+        sale.id = format!("{}-{}-{}-{}-{}-{}", is_recombed, reforge, id, stars, hpb, fpb);
     }
     Some(sale)
 }

@@ -30,16 +30,23 @@ pub struct PriceData {
     pub ah_lookups: Vec<String>,
 }
 
-// let volume = prices.len();
-// let lowest_price = prices[0];
-// let next_lowest_price = prices[1];
-// let flip_price = next_lowest_price - lowest_price;
-// let profit_percentage = flip_price / lowest_price;
-// // let tax = lowest_price * 0.01 + next_lowest * 0.02;
-// let lowest_bin = &auc[find_flip_by_price(auc, lowest_price)];
-// let next_lowest_bin = &auc[find_flip_by_price(auc, next_lowest_price)];
+#[derive(Clone, Serialize, Deserialize)]
+pub enum FlipType {
+    LBin,
+    Target
+}
+impl FlipType {
+    pub fn to_string(&self) -> String{
+        return match self.clone() {
+            FlipType::LBin => "LBin".to_string(),
+            FlipType::Target => "Target".to_string()
+        };
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Flip {
+    pub flip_type: FlipType,
     pub flip_price: usize,
     pub profit_percentage: usize,  // not in decimal x100
     pub lowest_bin: Auction,
@@ -63,7 +70,7 @@ impl Flip {
         }
         else {
             let colored_name = utils::rarity_to_color(self);
-            println!("{}", colored_name);
+            println!("{} ({})", colored_name, self.flip_type.to_string());
         }
         println!("Estimated Profit: {}", format!("+{} ({}%)", utils::prettify_large_nums(self.flip_price), self.profit_percentage).green());
         // println!("Profit: {}%", self.profit_percentage.to_string().green());
