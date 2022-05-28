@@ -91,7 +91,8 @@ async fn get_flips() -> serde_json::Value {
 
 async fn get_targets() -> serde_json::Value {
     let file: String = String::from("./files/targets.json");
-    let json: serde_json::Value = serde_json::from_str(&file).unwrap();
+    let targets: String = fs::read_to_string(&file).expect("Unable to read file");
+    let json: serde_json::Value = serde_json::from_str(&targets).unwrap();
     // Ok(warp::reply::json(&load_json))
     json
 }
