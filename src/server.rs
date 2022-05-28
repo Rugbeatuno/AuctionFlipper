@@ -26,7 +26,7 @@ async fn response(req: Request<Body>) -> Result<Response<Body>, Infallible> {
         }
         
         (Method::GET, "/targets") => {
-            let resp: serde_json::Value = get_flips().await;
+            let resp: serde_json::Value = get_targets().await;
             Ok(Response::builder()
             .status(StatusCode::OK)
             .header(header::CONTENT_TYPE, "application/json")
