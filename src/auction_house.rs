@@ -303,7 +303,7 @@ async fn fetch(url: String) -> serde_json::Value{
 // Find flips that fit criteria and write those to JSON for future use.
 pub fn find_flips(auctions: &HashMap<String, Vec<Auction>>, targets: &HashMap<String, Vec<SaleData>>) {
     let min_profit = 650_000;
-    let min_profit_percentage = 15;
+    let min_profit_percentage = 10;
     let min_volume = 3;
     // let max_bid = 100_000_000;
 
@@ -357,7 +357,9 @@ pub fn find_flips(auctions: &HashMap<String, Vec<Auction>>, targets: &HashMap<St
         let next_lowest_bin: &Auction = &similar_auctions[1];
         
         // Guard condition - delete later
-        assert!(lowest_bin.price != 0);
+        if lowest_bin.price == 0 {
+            continue;
+        }
 
        
 
@@ -379,8 +381,10 @@ pub fn find_flips(auctions: &HashMap<String, Vec<Auction>>, targets: &HashMap<St
             let taxes = (flip_price as f64 * 0.02 + lowest_bin.price as f64 * 0.01) as u64;
             flip_price = if taxes < flip_price {flip_price-taxes} else {flip_price};
             let profit_percentage = (flip_price * 100 / lowest_bin.price) as usize;
-
-            if flip_price > min_profit && profit_percentage > min_profit_percentage && lowest_bin.price < avg_target_price {
+            
+            if flip_price > min_profit && profit_percentage > min_profit_percentage {
+                println!("{} {} {} {}% - {}", auction.name, auction.id,flip_price, profit_percentage, avg_target_price);
+              if lowest_bin.price < avg_target_price {
                 possible_flips.push(Flip {
                     flip_type: FlipType::LBin,
                     flip_price: flip_price as usize,
@@ -390,7 +394,8 @@ pub fn find_flips(auctions: &HashMap<String, Vec<Auction>>, targets: &HashMap<St
                     similar_auctions: num_similar_auctions,
                     volume_last_week,
                     estimated_target_price: avg_target_price as usize,
-                });
+                });  
+            } 
             }
         }
 
