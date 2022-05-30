@@ -1,9 +1,7 @@
+use crate::auction_house::to_nbt;
 use crate::utils;
 use crate::structs::*;
-use crate::pets::*;
 use crate::constants::*;
-use crate::auction_house::to_nbt;
-
 use std::{fs, collections::HashMap};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -51,95 +49,6 @@ fn update_json(new_sales: Vec<Sale>, path: String) {
 }
 
 
-// Pets are formatted as TIER-NAME-LEVEL-PET_ITEM, and with candy or skins are ignored
-// Enchanted books are ENCHANT_LEVEL
-// Normal items are just RARITY-ISRECOMBED-REFORGE-NAME-STARS-SPECIALENCHANTS
-fn format_sale_for_target(auction: &serde_json::Value) -> Option<Sale> {
-    let nbt = &to_nbt(serde_json::from_value(auction.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
-    let id = nbt.tag.extra_attributes.id.as_ref().unwrap();
-
-    // Convert from milliseconds to seconds
-    let mut sale = Sale {
-        id: id.to_string(),
-        data: SaleData {
-            price: auction.get("price").unwrap().as_u64().unwrap(),
-            timestamp: auction.get("timestamp").unwrap().as_u64().unwrap() / 1000, 
-        },
-    };
-
-    if id == "PET" {
-        let pet_data = is_pet(nbt, "".to_string()).unwrap();
-        if pet_data.candy > 0 {return None}
-        sale.id = format!("{}-{}-{}-{}", pet_data.tier, pet_data.name, pet_data.level, pet_data.item);
-    }
-
-    else if id == "ENCHANTED_BOOK" {
-        match nbt.tag.extra_attributes.enchantments.as_ref() {
-            Some(e) => {
-                if e.len() == 1 { 
-                    for (enchant, level) in e {
-                        sale.id = format!("{}_{}", enchant, level);
-                    }
-                }
-            }
-            None => {return None}
-        };
-    }
-
-    // Normal items are just ISRECOMBED-REFORGE-NAME-STARS
-    else {
-        
-        let is_recombed: bool = match nbt.tag.extra_attributes.rarity_upgrades {
-            Some(_) => true,
-            None => false,
-        };
-        let reforge: &String = nbt.tag.extra_attributes.modifier.as_ref()?;
-        let id: String = sale.id;
-        let stars: u8 = nbt.tag.extra_attributes.dungeon_item_level?;
-        let hpb: u8 = nbt.tag.extra_attributes.hot_potato_count?;
-        let fpb: u8 = if hpb > 10 {hpb - 10} else {0};
-
-        sale.id = format!("{}-{}-{}-{}-{}-{}", is_recombed, reforge, id, stars, hpb, fpb);
-    }
-    Some(sale)
-}
-
-fn format_sale_for_sales(auction: &serde_json::Value) -> Sale {
-    let nbt = &to_nbt(serde_json::from_value(auction.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
-    let id = nbt.tag.extra_attributes.id.as_ref().unwrap();
-
-
-    // Convert from milliseconds to seconds
-    let mut sale = Sale {
-        id: id.to_string(),
-        data: SaleData {
-            price: auction.get("price").unwrap().as_u64().unwrap(),
-            timestamp: auction.get("timestamp").unwrap().as_u64().unwrap() / 1000, 
-            // buyer: auc.get("buyer").unwrap().as_str().unwrap().to_string(),
-        },
-    };
-
-    if id == "PET" {
-        let pet_data = is_pet(nbt, "".to_string()).unwrap();
-        sale.id = format!("{} {} {} {}", pet_data.tier, pet_data.name, pet_data.level, false);
-    }
-
-    else if id == "ENCHANTED_BOOK" {
-        match nbt.tag.extra_attributes.enchantments.as_ref() {
-            Some(e) => {
-                if e.len() == 1 { 
-                    for (enchant, level) in e {
-                        sale.id = format!("{}_{}", enchant, level);
-                    }
-                }
-            }
-            None => {}
-        };
-    }
-
-    sale
-}
-
 
 // This function accomplishes to things
 // 1) we update sales.json which is much less detailed than targets.json
@@ -158,9 +67,21 @@ pub async fn update_auctions_ended() {
             continue;
         }
 
-        sales.push(format_sale_for_sales(auc));
-        match format_sale_for_target(auc) {
-            Some(sale) => {targets.push(sale)},
+        let nbt = &to_nbt(serde_json::from_value(auc.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
+
+        let mut sale = Sale {
+            id: utils::format_name_for_sales(nbt),
+            data: SaleData {
+                price: auc.get("price").unwrap().as_u64().unwrap(),
+                timestamp: auc.get("timestamp").unwrap().as_u64().unwrap() / 1000, 
+            },
+        };
+        sales.push(sale.clone());
+        match utils::format_name_for_target(nbt) {
+            Some(id) => {
+                sale.id = id;
+                targets.push(sale);
+            }
             None => {}
         }
     }

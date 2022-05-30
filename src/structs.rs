@@ -18,6 +18,7 @@ pub struct Auction {
     pub start: u64,
     pub pet_data: Option<Pet>,
     pub additional_price_data: Option<PriceData>,
+    pub item_bytes: serde_json::Value,
     // last_update: u64,
 }
 
@@ -51,37 +52,38 @@ pub struct Flip {
     pub profit_percentage: usize,  // not in decimal x100
     pub lowest_bin: Auction,
     pub next_lowest_bin: Auction,
-    pub volume: usize,
-    pub last_hour_volume: usize,
-    pub raw_price: u64,
-    pub avg_raw_price: u64,
-    pub fail_reason: Option<String>,
+    pub similar_auctions: usize,
+    pub volume_last_week: usize,
+    pub estimated_target_price: usize,
+    // pub raw_price: u64,
+    // pub avg_raw_price: u64,
+    // pub fail_reason: Option<String>,
 }
 
 impl Flip {
     pub fn print(&self) {
-        let raw_price = utils::prettify_large_nums(self.raw_price.try_into().unwrap());
-        let est_raw_price = utils::prettify_large_nums(self.avg_raw_price.try_into().unwrap());
-        // This means that this flip would cause you to flip the item then more than it is normally worth
-        // Could mean over bidding - indicated by red
-        if self.lowest_bin.price + self.flip_price as u64 > self.avg_raw_price {
-        if self.fail_reason != None {
-            println!("{} - {}", self.lowest_bin.name.underline().red(), self.fail_reason.as_ref().unwrap().red());
-        }
-        else {
+        // let raw_price = utils::prettify_large_nums(self.raw_price.try_into().unwrap());
+        // let est_raw_price = utils::prettify_large_nums(self.avg_raw_price.try_into().unwrap());
+        // // This means that this flip would cause you to flip the item then more than it is normally worth
+        // // Could mean over bidding - indicated by red
+        // if self.lowest_bin.price + self.flip_price as u64 > self.avg_raw_price {
+        // if self.fail_reason != None {
+        //     println!("{} - {}", self.lowest_bin.name.underline().red(), self.fail_reason.as_ref().unwrap().red());
+        // }
+        // else {
             let colored_name = utils::rarity_to_color(self);
             println!("{} ({})", colored_name, self.flip_type.to_string());
-        }
+        // }
         println!("Estimated Profit: {}", format!("+{} ({}%)", utils::prettify_large_nums(self.flip_price), self.profit_percentage).green());
         // println!("Profit: {}%", self.profit_percentage.to_string().green());
         println!("Price: {} -> {}", utils::prettify_large_nums(self.lowest_bin.price.try_into().unwrap()).yellow(), utils::prettify_large_nums(self.next_lowest_bin.price as usize).bright_black());
-        println!("Est. Raw Price: {} < {}", raw_price.green(), est_raw_price.green());
-        println!("Volume: {}", self.volume.to_string().cyan());
-        println!("Sales Last Hour: {}", self.last_hour_volume.to_string().cyan());
+        println!("Est. Target: {}", utils::prettify_large_nums(self.estimated_target_price.try_into().unwrap()).yellow());
+        // println!("Est. Raw Price: {} < {}", raw_price.green(), est_raw_price.green());
+        println!("Similar Auctions: {}", self.similar_auctions.to_string().cyan());
+        println!("Volume (week): {}", self.volume_last_week.to_string().cyan());
         println!("Cmd: /viewauction {}", self.lowest_bin.uuid);
         println!("")
     }
-}
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -93,7 +95,7 @@ pub struct Pet {
     pub candy: u64,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Sale {
     pub id: String,
     pub data: SaleData,

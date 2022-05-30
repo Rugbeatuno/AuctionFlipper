@@ -9,6 +9,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use crate::structs::*;
 use crate::constants::*;
 use crate::pets::*;
+use crate::utils::*;
 
 
 // "uuid": "3d487e46a2a54f6d886fd314d2ec7e44",
@@ -211,7 +212,6 @@ fn process_page(req: serde_json::Value,  conversion_table: &mut HashMap<String, 
 
             // template
             let mut auction = Auction {
-                // id: nbt.tag.extra_attributes.id.as_ref().unwrap().to_string(),
                 id: "".to_string(),
                 seller: auc.get("auctioneer").unwrap().as_str().unwrap().to_string(),
                 uuid: auc.get("uuid").unwrap().as_str().unwrap().to_string(),
@@ -220,10 +220,9 @@ fn process_page(req: serde_json::Value,  conversion_table: &mut HashMap<String, 
                 lore: lore,
                 price: auc.get("starting_bid").unwrap().as_u64().unwrap(),
                 start: start,
-                // pet_data: is_pet(nbt, auc.get("item_name").unwrap().as_str().unwrap().to_string()),
                 pet_data: None,
                 additional_price_data: None,
-                // last_update: auc.get("last_updated").unwrap().as_u64().unwrap(),
+                item_bytes: auc.get("item_bytes").unwrap().to_owned(),
             };
 
 
@@ -302,7 +301,7 @@ async fn fetch(url: String) -> serde_json::Value{
 
 
 // Find flips that fit criteria and write those to JSON for future use.
-fn find_flips(auctions: &HashMap<String, Vec<Auction>>) {
+pub fn find_flips(auctions: &HashMap<String, Vec<Auction>>, targets: &HashMap<String, Vec<SaleData>>) {
     let min_profit = 650_000;
     let min_profit_percentage = 15;
     let min_volume = 3;
@@ -315,80 +314,172 @@ fn find_flips(auctions: &HashMap<String, Vec<Auction>>) {
 
     // Load json database for further comparisson 
     let data = fs::read_to_string(PATH_TO_SALES).expect("Unable to read file");
-    let mut load_json: HashMap<String, Vec<SaleData>> = HashMap::new();
+    let mut sales: HashMap<String, Vec<SaleData>> = HashMap::new();
     if fs::metadata(PATH_TO_SALES).unwrap().len() != 0 {
-        load_json = serde_json::from_str(&data).unwrap();
+        sales = serde_json::from_str(&data).unwrap();
     }
-    for (item_name, auc) in auctions.iter() {
-        let mut auc = auc.clone();
-        auc.sort_by_key(|f| f.price.clone());
 
-        let volume = auc.len();
-        if volume < min_volume {
+    // store pointers to all new auctions
+    let mut new_auctions: Vec<Auction> = vec![];
+    for (_, auction) in auctions.iter() {
+        for auc in auction {
+            if (unix_timestamp - auc.start) / 60 < IGNORE_AUCTION_MIN {
+                new_auctions.push(auc.clone());
+            }
+        }
+    }
+
+    // 1) iterate through all of the new auctions
+    // 2) find the average target price for each auction
+    // 3) find the lowest bin profit
+    // 4) check if there is profit for target value or lowest bin
+    // 5) create flip object
+    for auction in new_auctions {
+        // target
+        let nbt = &to_nbt(serde_json::from_value(auction.item_bytes.to_owned()).unwrap()).unwrap().i[0];
+        let target_name: String = match format_name_for_target(nbt) {
+            Some(name) => name,
+            None => "".to_string(),
+        };
+        let avg_target_price = find_avg_target_price(targets, target_name.clone());
+
+
+        // lbin - only if this auction is actually the lowest bin
+        let mut similar_auctions = auctions.get(&auction.id).unwrap().clone();
+        similar_auctions.sort_by_key(|f| f.price.clone());
+        let num_similar_auctions = similar_auctions.len();
+
+        if num_similar_auctions < min_volume {
             continue;
         }
 
-        let mut lowest_price: u64 = auc[0].price;
-        let next_lowest_price: u64 = auc[1].price;
-
-        // Guard condition
-        if lowest_price == 0 {
-            lowest_price = 1;
-        }
-
-        // let tax = lowest_price * 0.01 + next_lowest * 0.02;
-        if next_lowest_price < lowest_price {continue;}
+        let lowest_bin: &Auction = &similar_auctions[0];
+        let next_lowest_bin: &Auction = &similar_auctions[1];
         
-        let mut flip_price: u64 = (next_lowest_price - lowest_price).try_into().unwrap();
-        let taxes = (flip_price as f64 * 0.02 + lowest_price as f64 * 0.01) as u64;
-        flip_price = if taxes < flip_price {flip_price-taxes} else {flip_price};
+        // Guard condition - delete later
+        assert!(lowest_bin.price != 0);
 
-        let additional_costs = additional_costs(&auctions, &auc[1].additional_price_data);
+       
 
-
-        // Calculating avg raw price
-        let mut avg_raw_price = 0;
-        if load_json.contains_key(item_name) {
-            let prices = load_json.get(item_name).unwrap();
-            if prices.len() != 0 {
-                let mut sum = 0;
-                for p in prices {
-                    sum += p.price;
-                }
-                avg_raw_price = sum / (prices.len() as u64);
-            }
-        }
-
-        let last_hour_volume = match load_json.get(&auc[0].id) {
-            Some(sales) => sales.iter().filter(|i| unix_timestamp - i.timestamp < 3600).count(),
+        // we already know that sales are dropped after 1 week, we can just count all sales to get last_week_volume
+        let volume_last_week = match sales.get(&lowest_bin.id) {
+            Some(x) => x.len(),
             None => 0
         };
 
-        let flip = Flip {
-            flip_type: FlipType::LBin,
-            flip_price: flip_price.try_into().unwrap(),
-            profit_percentage: (flip_price * 100 / lowest_price).try_into().unwrap(),
-            lowest_bin: auc[0].clone(),
-            next_lowest_bin: auc[1].clone(),
-            volume,
-            last_hour_volume,
-            raw_price: if auc[0].price > additional_costs {auc[0].price - additional_costs} else {auc[0].price},
-            avg_raw_price,
-            fail_reason: None,
-        };
-
-        if (unix_timestamp - flip.lowest_bin.start) / 60 > IGNORE_AUCTION_MIN || // if the auction has been up for more than 7 minutes ignore it (good auctions are sniped within seconds)
-            flip.raw_price > avg_raw_price || // Overpay
-            (flip.lowest_bin.price + flip.flip_price as u64) as f32 / flip.avg_raw_price as f32 > 1.2 || // If profit margin is largley inflated over 20%
-            flip.lowest_bin.seller == "1d7a1fd3350546efa653389dfa00ea85"  || // If is my auction
-            flip.flip_price < min_profit || 
-            flip.profit_percentage < min_profit_percentage ||
-            flip.lowest_bin.tier != flip.next_lowest_bin.tier { 
+        // final checks - guard cases
+        if lowest_bin.seller == "1d7a1fd3350546efa653389dfa00ea85"  || // If is my auction
+            lowest_bin.tier != next_lowest_bin.tier { 
             continue;
         }  
-        possible_flips.push(flip);
-        
+
+        // first we check for bin profit
+        if lowest_bin.uuid == auction.uuid { // if this auction really is the lowest bin
+            let mut flip_price: u64 = (next_lowest_bin.price - lowest_bin.price).try_into().unwrap();
+            let taxes = (flip_price as f64 * 0.02 + lowest_bin.price as f64 * 0.01) as u64;
+            flip_price = if taxes < flip_price {flip_price-taxes} else {flip_price};
+            let profit_percentage = (flip_price * 100 / lowest_bin.price) as usize;
+
+            if flip_price > min_profit && profit_percentage > min_profit_percentage && lowest_bin.price < avg_target_price {
+                possible_flips.push(Flip {
+                    flip_type: FlipType::LBin,
+                    flip_price: flip_price as usize,
+                    profit_percentage,
+                    lowest_bin: lowest_bin.clone(),
+                    next_lowest_bin: next_lowest_bin.clone(),
+                    similar_auctions: num_similar_auctions,
+                    volume_last_week,
+                    estimated_target_price: avg_target_price as usize,
+                });
+            }
+        }
+
+        // now we check for target
+        if auction.price > avg_target_price {continue;}
+        let mut flip_price: u64 = avg_target_price - auction.price;
+        let taxes = (flip_price as f64 * 0.02 + lowest_bin.price as f64 * 0.01) as u64;
+        flip_price = if taxes < flip_price {flip_price-taxes} else {flip_price};
+        let profit_percentage = (flip_price * 100 / lowest_bin.price) as usize;
+
+        if flip_price > min_profit && profit_percentage > min_profit_percentage && lowest_bin.price < avg_target_price as u64 {
+            possible_flips.push(Flip {
+                flip_type: FlipType::Target,
+                flip_price: flip_price as usize,
+                profit_percentage,
+                lowest_bin: lowest_bin.clone(),
+                next_lowest_bin: next_lowest_bin.clone(),
+                similar_auctions: num_similar_auctions,
+                volume_last_week,
+                estimated_target_price: avg_target_price as usize,
+            });
+            println!("THE NAME IS {}", target_name);
+        }
     }
+
+
+    // for (item_name, auc) in auctions.iter() {
+    //     let mut auc = auc.clone();
+    //     auc.sort_by_key(|f| f.price.clone());
+
+    //     let volume = auc.len();
+        
+
+    //     let lowest_bin: &Auction = &auc[0];
+    //     let next_lowest_bin: &Auction = &auc[1];
+
+    //     // Guard condition
+    //     assert!(lowest_bin.price == 0);
+
+    //     let mut flip_price: u64 = (next_lowest_bin.price - lowest_bin.price).try_into().unwrap();
+    //     let taxes = (flip_price as f64 * 0.02 + lowest_bin.price as f64 * 0.01) as u64;
+    //     flip_price = if taxes < flip_price {flip_price-taxes} else {flip_price};
+
+        // let additional_costs = additional_costs(&auctions, &auc[1].additional_price_data);
+
+
+        // // Calculating avg raw price
+        // let mut avg_raw_price = 0;
+        // if sales.contains_key(item_name) {
+        //     let prices = sales.get(item_name).unwrap();
+        //     if prices.len() != 0 {
+        //         let mut sum = 0;
+        //         for p in prices {
+        //             sum += p.price;
+        //         }
+        //         avg_raw_price = sum / (prices.len() as u64);
+        //     }
+        // }
+
+        // we already know that sales are dropped after 1 week
+        // therefore we can just count all sales to get last_week_volume
+    //     let volume_last_week = sales.get(&auc[0].id).unwrap().len();
+
+    //     let flip = Flip {
+    //         flip_type: FlipType::LBin,
+    //         flip_price: flip_price.try_into().unwrap(),
+    //         profit_percentage: (flip_price * 100 / lowest_bin.price).try_into().unwrap(),
+    //         lowest_bin: lowest_bin.clone(),
+    //         next_lowest_bin: next_lowest_bin.clone(),
+    //         similar_auctions: volume,
+    //         volume_last_week,
+    //         estimated_target_price: 0,
+    //         // raw_price: if auc[0].price > additional_costs {auc[0].price - additional_costs} else {auc[0].price},
+    //         // avg_raw_price,
+    //         // fail_reason: None,
+    //     };
+
+    //     if (unix_timestamp - flip.lowest_bin.start) / 60 > IGNORE_AUCTION_MIN || // if the auction has been up for more than 7 minutes ignore it (good auctions are sniped within seconds)
+    //         // flip.raw_price > avg_raw_price || // Overpay
+    //         // (flip.lowest_bin.price + flip.flip_price as u64) as f32 / flip.avg_raw_price as f32 > 1.2 || // If profit margin is largley inflated over 20%
+    //         flip.lowest_bin.seller == "1d7a1fd3350546efa653389dfa00ea85"  || // If is my auction
+    //         flip.flip_price < min_profit || 
+    //         flip.profit_percentage < min_profit_percentage ||
+    //         flip.lowest_bin.tier != flip.next_lowest_bin.tier { 
+    //         continue;
+    //     }  
+    //     possible_flips.push(flip);
+        
+    // }
 
     // If the biggest flip is a reasonable amount recommend it
     // Otherwise, check if there is a huge amount of volume on any items
@@ -406,8 +497,8 @@ fn find_flips(auctions: &HashMap<String, Vec<Auction>>) {
 
     possible_flips.sort_by_key(|f| f.flip_price.clone());
     if possible_flips[possible_flips.len()-1].flip_price < 3_000_000 {
-        possible_flips.sort_by_key(|f| f.volume.clone());
-        if possible_flips.len() > 0 && possible_flips[possible_flips.len()-1].volume > 70 {
+        possible_flips.sort_by_key(|f| f.similar_auctions.clone());
+        if possible_flips.len() > 0 && possible_flips[possible_flips.len()-1].similar_auctions > 70 {
             // open_auction(&possible_flips);
         }
         else {
@@ -459,7 +550,6 @@ pub async fn update_critical_auctions(auctions_hashed: &mut HashMap<String, Vec<
             auctions_hashed.entry(auction.id.clone()).or_default().push(auction);
         }
     }
-    find_flips(&auctions_hashed);
     // println!("\rCritical Auctions Returned in: {:?} ({} auctions)", now.elapsed(), auctions_hashed.len());
 
     let json: String = serde_json::to_string(&conversion_tables).unwrap();
@@ -505,7 +595,6 @@ pub async fn update_all_auctions(auctions_hashed: &mut HashMap<String, Vec<Aucti
         }
     }
 
-    find_flips(&auctions_hashed);
 
     let json: String = serde_json::to_string(&conversion_tables).unwrap();
     fs::write(file, &json).expect("Unable to write file");

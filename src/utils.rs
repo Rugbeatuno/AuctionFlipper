@@ -1,6 +1,9 @@
 use std::{collections::HashMap, fs};
+use crate::pets::is_pet;
 // use std::fs;
 use crate::{constants, structs};
+use crate::structs::*;
+
 use std::time::{SystemTime, UNIX_EPOCH};
 use colored::*;
 
@@ -95,26 +98,6 @@ pub async fn get_next_api_update() -> u64 {
 }
 
 
-// pub async fn get_update_times() -> Vec<u64> {
-//     let unix_timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-//     let next_update = get_next_api_update().await;
-//     let time_until_update = next_update - unix_timestamp;
-
-//     let mut times: Vec<u64> = vec![];
-
-//     // If the time until next update is 20s or 40s update entire auction house
-//     // non-essential auctions
-//     times.push(next_update - 20);
-//     times.push(next_update - 40);
-
-//     // from 8s prior to update to 3s after update
-//     // essential auctions
-//     for i in next_update-8..next_update+4 {
-//         times.push(i);
-//     }
-
-//     times
-// }
 
 
 pub async fn fetch(url: String) -> serde_json::Value{
@@ -136,3 +119,99 @@ pub async fn fetch(url: String) -> serde_json::Value{
 pub fn save_next_update(next_update: u64) {
     fs::write(constants::PATH_TO_NEXT_UPDATE_FILE, next_update.to_string()).expect("Unable to write file");
 }
+
+
+// Pets are formatted as TIER-NAME-LEVEL-PET_ITEM, and with candy or skins are ignored
+// Enchanted books are ENCHANT_LEVEL
+// Normal items are just RARITY-ISRECOMBED-REFORGE-NAME-STARS-SPECIALENCHANTS
+pub fn format_name_for_target(nbt: &PartialNbtElement) -> Option<String> {
+    let id = nbt.tag.extra_attributes.id.as_ref().unwrap();
+    let mut name: String = String::from("");
+
+    if id == "PET" {
+        let pet_data = is_pet(&nbt, "".to_string()).unwrap();
+        if pet_data.candy > 0 {return None}
+        name = format!("{}-{}-{}-{}", pet_data.tier, pet_data.name, pet_data.level, pet_data.item);
+    }
+
+    else if id == "ENCHANTED_BOOK" {
+        match nbt.tag.extra_attributes.enchantments.as_ref() {
+            Some(e) => {
+                if e.len() == 1 { 
+                    for (enchant, level) in e {
+                        name = format!("{}_{}", enchant, level);
+                    }
+                }
+            }
+            None => {return None}
+        };
+    }
+     // Normal items are just ISRECOMBED-REFORGE-NAME-STARS
+     else {
+        let is_recombed: bool = match nbt.tag.extra_attributes.rarity_upgrades {
+            Some(_) => true,
+            None => false,
+        };
+        let reforge: String = match nbt.tag.extra_attributes.modifier.as_ref() {
+            Some(r) => r.to_string(),
+            None => "none".to_string()
+        };
+        let id: String = name;
+        let stars: u8 = match nbt.tag.extra_attributes.dungeon_item_level {
+            Some(s) => s,
+            None => 0
+        };
+        let hpb: u8 = match nbt.tag.extra_attributes.hot_potato_count {
+            Some(s) => s,
+            None => 0
+        };
+        let fpb: u8 = if hpb > 10 {hpb - 10} else {0};
+
+        name = format!("{}-{}-{}-{}-{}-{}", is_recombed, reforge, id, stars, hpb, fpb);
+    }
+    Some(name)
+}
+
+
+pub fn format_name_for_sales(nbt: &PartialNbtElement) -> String {
+    let mut name: String = nbt.tag.extra_attributes.id.as_ref().unwrap().to_string();
+
+    if name == "PET" {
+        let pet_data = is_pet(nbt, "".to_string()).unwrap();
+        name = format!("{} {} {} {}", pet_data.tier, pet_data.name, pet_data.level, false);
+    }
+
+    else if name == "ENCHANTED_BOOK" {
+        match nbt.tag.extra_attributes.enchantments.as_ref() {
+            Some(e) => {
+                if e.len() == 1 { 
+                    for (enchant, level) in e {
+                        name = format!("{}_{}", enchant, level);
+                    }
+                }
+            }
+            None => {}
+        };
+    }
+
+    name
+}
+
+// we will used a trimmed mean to remove outliers
+// meaning, ignoring the top 10% and bottom 10% of the list
+pub fn find_avg_target_price(targets: &HashMap<String, Vec<SaleData>>, formatted_target_name: String) -> u64 {
+    match targets.get(&formatted_target_name) {
+        Some(flips) => {
+            let mut flips = flips.clone();
+            flips.sort_by_key(|f| f.price.clone());
+
+            let ten_percent = flips.len() / 10;
+            let trimmed_flips = &flips[ten_percent..flips.len()-ten_percent];
+            return trimmed_flips.iter().map(|e| e.price).sum::<u64>() / trimmed_flips.len() as u64;
+        }
+        None => {return 0}
+    }
+}
+
+   
+
