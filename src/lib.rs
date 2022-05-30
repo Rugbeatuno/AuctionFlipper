@@ -11,6 +11,17 @@ use std::collections::HashMap;
 
 use crate::structs::{Sale, SaleData};
 
+fn update_targets() -> Option<HashMap<String, Vec<SaleData>>> {
+    let file: String = String::from(constants::PATH_TO_TARGETS);
+    let data = fs::read_to_string(&file).expect("Unable to read file");
+    let mut targets: HashMap<String, Vec<SaleData>> = HashMap::new();
+    if fs::metadata(&file).unwrap().len() != 0 {
+        targets = serde_json::from_str(&data).unwrap();
+        Some(targets);
+    }
+    None
+}
+
 #[no_mangle]
 pub async fn flipper() {
     println!("Flipper Started!");
@@ -19,12 +30,12 @@ pub async fn flipper() {
     let mut auctions_hashed: HashMap<String, Vec<structs::Auction>> = HashMap::new();
     let mut auction_ids: Vec<String> = vec![];
 
-    let file: String = String::from(constants::PATH_TO_TARGETS);
-    let data = fs::read_to_string(&file).expect("Unable to read file");
     let mut targets: HashMap<String, Vec<SaleData>> = HashMap::new();
-    if fs::metadata(&file).unwrap().len() != 0 {
-        targets = serde_json::from_str(&data).unwrap();
+    match update_targets() {
+        Some(t) => {targets = t;}
+        None => {}
     }
+   
 
     auction_house::update_all_auctions(&mut auctions_hashed, &mut auction_ids).await;
     let mut next_update = utils::get_next_api_update().await;
@@ -51,9 +62,10 @@ pub async fn flipper() {
         if time_until_update < -5 {
             next_update = utils::get_next_api_update().await;
             utils::save_next_update(next_update);
-            targets = serde_json::from_str(&data).unwrap();  // update targets
-
-
+            match update_targets() {
+                Some(t) => {targets = t;}
+                None => {}
+            }
             auctions_ended::update_auctions_ended().await;
             auctions_hashed.clear();
             auction_ids.clear();
