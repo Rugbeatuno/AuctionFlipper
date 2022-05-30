@@ -21,7 +21,10 @@ pub async fn flipper() {
 
     let file: String = String::from(constants::PATH_TO_TARGETS);
     let data = fs::read_to_string(&file).expect("Unable to read file");
-    let mut targets: HashMap<String, Vec<SaleData>> = serde_json::from_str(&data).unwrap();
+    let mut targets: HashMap<String, Vec<SaleData>> = HashMap::new();
+    if fs::metadata(&file).unwrap().len() != 0 {
+        targets = serde_json::from_str(&data).unwrap();
+    }
 
     auction_house::update_all_auctions(&mut auctions_hashed, &mut auction_ids).await;
     let mut next_update = utils::get_next_api_update().await;
