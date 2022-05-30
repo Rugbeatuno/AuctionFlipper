@@ -9,7 +9,7 @@ use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::collections::HashMap;
 
-use crate::structs::{Sale, SaleData};
+use crate::structs::{SaleData};
 
 fn update_targets() -> Option<HashMap<String, Vec<SaleData>>> {
     let file: String = String::from(constants::PATH_TO_TARGETS);
@@ -17,9 +17,8 @@ fn update_targets() -> Option<HashMap<String, Vec<SaleData>>> {
     let mut targets: HashMap<String, Vec<SaleData>> = HashMap::new();
     if fs::metadata(&file).unwrap().len() != 0 {
         targets = serde_json::from_str(&data).unwrap();
-        Some(targets);
     }
-    None
+    Some(targets)
 }
 
 #[no_mangle]

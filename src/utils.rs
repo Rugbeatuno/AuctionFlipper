@@ -166,7 +166,19 @@ pub fn format_name_for_target(nbt: &PartialNbtElement) -> Option<String> {
         };
         let fpb: u8 = if hpb > 10 {hpb - 10} else {0};
 
-        name = format!("{}-{}-{}-{}-{}-{}", is_recombed, reforge, id, stars, hpb, fpb);
+        let mut ultimate_enchant = "none".to_string();
+        match nbt.tag.extra_attributes.enchantments.as_ref() {
+            Some(e) => {
+                for (enchant, level) in e {
+                    if enchant.contains("ultimate") {
+                        ultimate_enchant = format!("{}_{}", enchant, level).to_owned();
+                    }
+                }
+            }
+            None => {}
+        };
+
+        name = format!("{}-{}-{}-{}-{}-{}-{}", is_recombed, reforge, id, stars, hpb, fpb, ultimate_enchant);
     }
     Some(name)
 }
@@ -201,10 +213,14 @@ pub fn format_name_for_sales(nbt: &PartialNbtElement) -> String {
 pub fn find_avg_target_price(targets: &HashMap<String, Vec<SaleData>>, formatted_target_name: String) -> u64 {
     match targets.get(&formatted_target_name) {
         Some(flips) => {
+            if flips.len() < 30 {
+                return 0;
+            }
+
             let mut flips = flips.clone();
             flips.sort_by_key(|f| f.price.clone());
 
-            let ten_percent = flips.len() / 10;
+            let ten_percent = flips.len() / 5;
             let trimmed_flips = &flips[ten_percent..flips.len()-ten_percent];
             return trimmed_flips.iter().map(|e| e.price).sum::<u64>() / trimmed_flips.len() as u64;
         }

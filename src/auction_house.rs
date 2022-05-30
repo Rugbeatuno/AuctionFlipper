@@ -342,7 +342,6 @@ pub fn find_flips(auctions: &HashMap<String, Vec<Auction>>, targets: &HashMap<St
             None => "".to_string(),
         };
         let avg_target_price = find_avg_target_price(targets, target_name.clone());
-        println!("{} {} {}%", auction.id, target_name, avg_target_price);
 
 
         // lbin - only if this auction is actually the lowest bin
@@ -384,7 +383,6 @@ pub fn find_flips(auctions: &HashMap<String, Vec<Auction>>, targets: &HashMap<St
             let profit_percentage = (flip_price * 100 / lowest_bin.price) as usize;
             
             if flip_price > min_profit && profit_percentage > min_profit_percentage {
-                println!("{} {} {} {}% - {}", auction.name, auction.id,flip_price, profit_percentage, avg_target_price);
               if lowest_bin.price < avg_target_price {
                 possible_flips.push(Flip {
                     flip_type: FlipType::LBin,
@@ -412,13 +410,12 @@ pub fn find_flips(auctions: &HashMap<String, Vec<Auction>>, targets: &HashMap<St
                 flip_type: FlipType::Target,
                 flip_price: flip_price as usize,
                 profit_percentage,
-                lowest_bin: lowest_bin.clone(),
-                next_lowest_bin: next_lowest_bin.clone(),
+                lowest_bin: auction.clone(),
+                next_lowest_bin: auction.clone(),
                 similar_auctions: num_similar_auctions,
                 volume_last_week,
                 estimated_target_price: avg_target_price as usize,
             });
-            println!("THE NAME IS {}", target_name);
         }
     }
 
