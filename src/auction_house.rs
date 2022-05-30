@@ -342,6 +342,7 @@ pub fn find_flips(auctions: &HashMap<String, Vec<Auction>>, targets: &HashMap<St
             None => "".to_string(),
         };
         let avg_target_price = find_avg_target_price(targets, target_name.clone());
+        println!("{} {} {}%", auction.id, target_name, avg_target_price);
 
 
         // lbin - only if this auction is actually the lowest bin

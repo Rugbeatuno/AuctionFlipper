@@ -156,7 +156,6 @@ pub fn format_name_for_target(nbt: &PartialNbtElement) -> Option<String> {
             Some(r) => r.to_string(),
             None => "none".to_string()
         };
-        let id: String = name;
         let stars: u8 = match nbt.tag.extra_attributes.dungeon_item_level {
             Some(s) => s,
             None => 0
