@@ -538,7 +538,7 @@ pub async fn update_critical_auctions(auctions_hashed: &mut HashMap<String, Vec<
         conversion_tables = serde_json::from_str(&data).unwrap();
     }
 
-    let _now: Instant = Instant::now();
+    let now: Instant = Instant::now();
 
     futures.push(fetch("https://api.hypixel.net/skyblock/auctions?page=0".to_string()));
     futures.push(fetch("https://api.hypixel.net/skyblock/auctions?page=1".to_string()));
@@ -553,7 +553,7 @@ pub async fn update_critical_auctions(auctions_hashed: &mut HashMap<String, Vec<
             auctions_hashed.entry(auction.id.clone()).or_default().push(auction);
         }
     }
-    // println!("\rCritical Auctions Returned in: {:?} ({} auctions)", now.elapsed(), auctions_hashed.len());
+    println!("\rCritical Auctions Returned in: {:?} ({} auctions)", now.elapsed(), auctions_hashed.len());
 
     let json: String = serde_json::to_string(&conversion_tables).unwrap();
     fs::write(file, &json).expect("Unable to write file");
@@ -574,7 +574,7 @@ pub async fn update_all_auctions(auctions_hashed: &mut HashMap<String, Vec<Aucti
 
     // Load previous pages
     // let prev_pages = get_pa
-    println!("\rUpdating Non-essential Auctions!");
+    // println!("\rUpdating Non-essential Auctions!");
     // let now: Instant = Instant::now();
 
     let page_0 = fetch(String::from("https://api.hypixel.net/skyblock/auctions?page=0")).await;
