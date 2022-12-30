@@ -1,75 +1,95 @@
 mod auction_house;
+mod auctions_ended;
 mod constants;
+mod inputs;
+mod pets;
 mod structs;
 mod utils;
-mod pets;
-mod auctions_ended;
 
-use std::fs;
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::structs::{SaleData};
+use crate::constants::{PATH_TO_AVG_LBIN, PATH_TO_VOLUME};
+use crate::utils::load_json_file;
 
-fn update_targets() -> Option<HashMap<String, Vec<SaleData>>> {
-    let file: String = String::from(constants::PATH_TO_TARGETS);
-    let data = fs::read_to_string(&file).expect("Unable to read file");
-    let mut targets: HashMap<String, Vec<SaleData>> = HashMap::new();
-    if fs::metadata(&file).unwrap().len() != 0 {
-        targets = serde_json::from_str(&data).unwrap();
-    }
-    Some(targets)
-}
+use crate::inputs::{init, send};
+use rdev::{simulate, Button, EventType, Key, SimulateError};
 
 #[no_mangle]
 pub async fn flipper() {
     println!("Flipper Started!");
+
+    init();
     let holder: u64 = 0;
 
     let mut auctions_hashed: HashMap<String, Vec<structs::Auction>> = HashMap::new();
-    let mut auction_ids: Vec<String> = vec![];
-
-    let mut targets: HashMap<String, Vec<SaleData>> = HashMap::new();
-    match update_targets() {
-        Some(t) => {targets = t;}
-        None => {}
-    }
-   
+    let mut auction_ids: HashMap<String, String> = HashMap::new();
+    let mut last_update: i32 = 0;
+    let mut prev_last_update = 0;
+    let mut avg_lbin_json = load_json_file(PATH_TO_AVG_LBIN);
+    let mut volume_json = load_json_file(PATH_TO_VOLUME);
+    // let last_big_update = SystemTime::now()
+    //     .duration_since(UNIX_EPOCH)
+    //     .unwrap()
+    //     .as_secs();
 
     auction_house::update_all_auctions(&mut auctions_hashed, &mut auction_ids).await;
     let mut next_update = utils::get_next_api_update().await;
     utils::save_next_update(next_update);
-
+    // println!("{:?}", auctions_hashed);
     while holder < 1_000_000 {
-        let unix_timestamp: u64 = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-        let time_until_update: i32 = next_update as i32 - unix_timestamp as i32;
+        let unix_timestamp: u64 = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let mut time_until_update: i32 = next_update as i32 - unix_timestamp as i32;
 
         print!("\r  {}  ", time_until_update);
-            
-        if time_until_update == 20 || time_until_update == 40 { // refresh non-essential pages
-            auctions_hashed.clear();
-            auction_ids.clear();
-            auction_house::update_all_auctions(&mut auctions_hashed, &mut auction_ids).await;
-            auction_house::find_flips(&auctions_hashed, &targets)
+        // continue;
+        if time_until_update == 20 {
+            auctions_ended::remove_sold_flips().await;
+            avg_lbin_json = load_json_file(PATH_TO_AVG_LBIN);
+            volume_json = load_json_file(PATH_TO_VOLUME);
         }
 
-        if time_until_update <= 10 { // refresh critcal pages
-            auction_house::update_critical_auctions(&mut auctions_hashed, &mut auction_ids).await;
-            auction_house::find_flips(&auctions_hashed, &targets)
+        if time_until_update <= 3 {
+            // refresh critcal pages
+            prev_last_update = last_update;
+            auction_house::update_critical_auctions(
+                &mut auctions_hashed,
+                &mut auction_ids,
+                &mut last_update,
+            )
+            .await;
+
+            auction_house::find_flips(&auctions_hashed, &avg_lbin_json, &volume_json);
+            // meaning the page updated
+            if last_update != prev_last_update {
+                time_until_update = -10;
+            }
         }
 
         if time_until_update < -5 {
             next_update = utils::get_next_api_update().await;
             utils::save_next_update(next_update);
-            match update_targets() {
-                Some(t) => {targets = t;}
-                None => {}
-            }
-            auctions_ended::update_auctions_ended().await;
-            auctions_hashed.clear();
-            auction_ids.clear();
-            auction_house::update_all_auctions(&mut auctions_hashed, &mut auction_ids).await;
-            auction_house::find_flips(&auctions_hashed, &targets);
+
+            auctions_ended::update_volume(&auctions_hashed).await;
+            auctions_ended::update_additional_price_data(&auctions_hashed).await;
+
+            auctions_ended::remove_expired_sold_auctions(&mut auctions_hashed);
+            auctions_ended::remove_sold_flips().await;
+            // auctions_ended::update_auctions_ended().await;
+            // if unix_timestamp - last_big_update > 180 {
+            //     auctions_hashed.clear();
+            //     auction_ids.clear();
+            //     auction_house::update_all_auctions(&mut auctions_hashed, &mut auction_ids).await;
+            //     auction_house::find_flips(&auctions_hashed, &targets);
+
+            //     last_big_update = SystemTime::now()
+            //         .duration_since(UNIX_EPOCH)
+            //         .unwrap()
+            //         .as_secs();
+            // }
         }
     }
 }

@@ -1,16 +1,18 @@
 use serde_json;
 
 use futures::{stream::FuturesUnordered, StreamExt};
-use std::{str, fs, iter::Iterator, collections::HashMap};
-use std::{result::Result as StdResult};
+use serde_derive::{Deserialize, Serialize};
+use std::result::Result as StdResult;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::{collections::HashMap, fs, str};
+
 // use cli_clipboard;
 
-use crate::structs::*;
 use crate::constants::*;
+use crate::inputs::send;
 use crate::pets::*;
-use crate::utils::*;
-
+use crate::structs::*;
+use crate::utils::load_json_file;
 
 // "uuid": "3d487e46a2a54f6d886fd314d2ec7e44",
 // "auctioneer": "2c7ae7c461804ccd89f05809d02d333c",
@@ -40,142 +42,168 @@ use crate::utils::*;
 
 // const PATH_TO_TARGETS: &str = "./src/files/targets.json";
 
-
 pub fn to_nbt(item_bytes: ItemBytes) -> Result<PartialNbt, Box<dyn std::error::Error>> {
     let bytes: StdResult<Vec<u8>, _> = item_bytes.into();
     let nbt: PartialNbt = nbt::from_gzip_reader(std::io::Cursor::new(bytes?))?;
     Ok(nbt)
 }
 
-
-
-
-
-
 fn calc_additional_price(nbt: &PartialNbtElement) -> Option<PriceData> {
-    let is_recombed = match nbt.tag.extra_attributes.rarity_upgrades.as_ref() {
-        Some(_) => 1,
-        None => 0,
+    // println!("{:?}", nbt.tag.extra_attributes);
+    // println!();
+    let is_recombed = match &nbt.tag.extra_attributes.rarity_upgrades {
+        Some(_) => Some(1),
+        None => None,
     };
-    let mut hot_potato_books = 0;
-    let mut fuming_potato_books = 0;
-    match nbt.tag.extra_attributes.hot_potato_count.as_ref() {
-        Some(e) => {
-            hot_potato_books = if e <= &10 {*e} else {10};
-            fuming_potato_books = if e <= &10 {0} else {e-10};
-        }
-        None => {}
-    };
+    // let mut hot_potato_books = 0;
+    // let mut fuming_potato_books = 0;
+    // match nbt.tag.extra_attributes.hot_potato_count.as_ref() {
+    //     Some(e) => {
+    //         hot_potato_books = if e <= &10 { *e } else { 10 };
+    //         fuming_potato_books = if e <= &10 { 0 } else { e - 10 };
+    //     }
+    //     None => {}
+    // };
 
-
-    let stars = match nbt.tag.extra_attributes.dungeon_item_level.as_ref() {
-        Some(e) => *e,
-        None => 0,
-    };
-
-    let mut ah_lookups = vec![];
-    match nbt.tag.extra_attributes.enchantments.as_ref() {
-        Some(e) => {
-            for (enchant, level) in e {
-            let enchant = format!("{}_{}", enchant, level);
-            ah_lookups.push(enchant);
-            }
-        }
-        None => {}
-    };
-
-    match nbt.tag.extra_attributes.art_of_war_count.as_ref() {
-        Some(_) => {ah_lookups.push(String::from("THE_ART_OF_WAR"))},
-        None => {}
-    };
-
-    match nbt.tag.extra_attributes.ability_scroll.as_ref() {
-        Some(e) => {
-            for scroll in e {
-                ah_lookups.push(scroll.to_string());
-            }
+    let stars = match &nbt.tag.extra_attributes.dungeon_item_level {
+        Some(e) => Some(*e as u64),
+        None => match &nbt.tag.extra_attributes.upgrade_level {
+            Some(k) => Some(*k as u64),
+            None => None,
         },
-        None => {}
     };
+
+    let ah_lookups = vec![];
+    // match nbt.tag.extra_attributes.enchantments.as_ref() {
+    //     Some(e) => {
+    //         for (enchant, level) in e {
+    //             let enchant = format!("{}_{}", enchant, level);
+    //             ah_lookups.push(enchant);
+    //         }
+    //     }
+    //     None => {}
+    // };
+
+    // match nbt.tag.extra_attributes.art_of_war_count.as_ref() {
+    //     Some(_) => ah_lookups.push(String::from("THE_ART_OF_WAR")),
+    //     None => {}
+    // };
+
+    // match nbt.tag.extra_attributes.ability_scroll.as_ref() {
+    //     Some(e) => {
+    //         for scroll in e {
+    //             ah_lookups.push(scroll.to_string());
+    //         }
+    //     }
+    //     None => {}
+    // };
 
     let price_data = PriceData {
         recombed: is_recombed,
-        hpb: hot_potato_books.try_into().unwrap(),
-        fpb: fuming_potato_books.try_into().unwrap(),
-        stars: stars.try_into().unwrap(),
-        ah_lookups: ah_lookups,
+        hpb: 0,
+        fpb: 0,
+        stars,
+        ah_lookups,
     };
 
     Some(price_data)
-    
 }
 
-
-fn default_case(filtered_auctions: &mut Vec<Auction>, conversion_table: &mut HashMap<String, String>, auction: &mut Auction, unparsed_auction: &serde_json::Value){
+fn default_case(
+    filtered_auctions: &mut Vec<Auction>,
+    conversion_table: &mut HashMap<String, String>,
+    auction: &mut Auction,
+    unparsed_auction: &serde_json::Value,
+) {
     if conversion_table.contains_key(&auction.name) {
         auction.id = conversion_table.get(&auction.name).unwrap().to_string();
-    } 
-    else {
-        let nbt = &to_nbt(serde_json::from_value(unparsed_auction.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
+    } else {
+        let nbt = &to_nbt(
+            serde_json::from_value(unparsed_auction.get("item_bytes").unwrap().to_owned()).unwrap(),
+        )
+        .unwrap()
+        .i[0];
         auction.id = nbt.tag.extra_attributes.id.as_ref().unwrap().to_string();
-        conversion_table.insert(auction.name.clone(), auction.id.clone());
+        conversion_table.insert(auction.name.to_string(), auction.id.to_string());
     }
-    filtered_auctions.push(auction.clone());
+    filtered_auctions.push(auction.to_owned());
 }
 
-fn book_case(filtered_auctions: &mut Vec<Auction>, conversion_table: &mut HashMap<String, String>, auction: &mut Auction, unparsed_auction: &serde_json::Value) {
-    // guard condition - removes common and uncommon enchants (default basic enchants)
-    if auction.lore.contains("COMMON") || auction.lore.contains("UNCOMMON") {
-        return;
-    }
-    // guard condition - removes any enchanted book with more than 2 enchants
-    let total_enchants = ROMAN_NUMERALS.iter().filter(|&num| auction.lore.contains(num) == true).count();
-    if total_enchants > 1 {
-        return;
-    }
-    // Only books remaining have 1 enchant and are non-basic/default level enchants
+// fn book_case(
+//     filtered_auctions: &mut Vec<Auction>,
+//     conversion_table: &mut HashMap<String, String>,
+//     rarity_table: &mut HashMap<String, String>,
+//     auction: &mut Auction,
+//     unparsed_auction: &serde_json::Value,
+// ) {
+//     // guard condition - removes common and uncommon enchants (default basic enchants)
+//     if auction.lore.contains("COMMON") || auction.lore.contains("UNCOMMON") {
+//         return;
+//     }
+//     // guard condition - removes any enchanted book with more than 2 enchants
+//     let total_enchants = ROMAN_NUMERALS
+//         .iter()
+//         .filter(|&num| auction.lore.contains(num) == true)
+//         .count();
+//     if total_enchants > 1 {
+//         return;
+//     }
+//     // Only books remaining have 1 enchant and are non-basic/default level enchants
 
-    let g: Vec<&str> = auction.lore.split("\n").collect();
-    let enchant = g[0];
-    let name = enchant.replace("§9", "").to_lowercase();
+//     let g: Vec<&str> = auction.lore.split("\n").collect();
+//     let enchant = g[0];
+//     let name = enchant.replace("§9", "").to_lowercase();
 
-    if conversion_table.contains_key(&name) {
-        let id = conversion_table.get(&name).unwrap().to_string();
-        auction.id = id.clone();
-        auction.name = id.clone();
-    } 
-    else {
-        let nbt = &to_nbt(serde_json::from_value(unparsed_auction.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
-        let enchants = nbt.tag.extra_attributes.enchantments.as_ref().unwrap();
-        for (k, v) in enchants {
-            let new_id = format!("{}_{}", k, v);
-            auction.id = new_id.clone();
-            auction.name = new_id.clone();
-        }
-        
-        conversion_table.insert(name, auction.id.clone());
-    }
+//     if conversion_table.contains_key(&name) {
+//         let id = conversion_table.get(&name).unwrap().to_string();
+//         auction.id = id.clone();
+//         auction.name = id.clone();
+//     } else {
+//         let nbt = &to_nbt(
+//             serde_json::from_value(unparsed_auction.get("item_bytes").unwrap().to_owned()).unwrap(),
+//         )
+//         .unwrap()
+//         .i[0];
+//         let enchants = nbt.tag.extra_attributes.enchantments.as_ref().unwrap();
+//         for (k, v) in enchants {
+//             let new_id = format!("{}_{}", k, v);
+//             auction.id = new_id.clone();
+//             auction.name = new_id.clone();
+//         }
 
-    
-    filtered_auctions.push(auction.clone());
-}
+//         conversion_table.insert(name.clone(), auction.id.clone());
+//     }
 
+//     // log enchants that are not basic into rarity_table - using hashmap for speed
+//     if !rarity_table.contains_key(&name) {
+//         rarity_table.insert(auction.name.clone(), "".to_string());
+//     }
 
-fn process_page(req: serde_json::Value,  conversion_table: &mut HashMap<String, String>) -> Vec<Auction> {
+//     filtered_auctions.push(auction.clone());
+// }
+
+fn process_page(
+    req: serde_json::Value,
+    conversion_table: &mut HashMap<String, String>,
+    avg_lbin_json: &HashMap<String, String>,
+    volume_json: &HashMap<String, String>,
+) -> Vec<Auction> {
     // let s = Instant::now();
-    let unix_timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let unix_timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
 
     let mut filtered_auctions: Vec<Auction> = Vec::new();
 
     // let mut holder = false;
     // let page_num = req.get("page").unwrap().as_u64().unwrap();
-
     if req.get("auctions") != None {
         let page = req.get("auctions").unwrap().as_array().unwrap();
         for auc in page.into_iter() {
             let bin: bool = auc.get("bin").unwrap().as_bool().unwrap();
             let claimed: bool = auc.get("claimed").unwrap().as_bool().unwrap();
-            
+
             // Initial checks to prevent wasting time on already ended or wrong type of auction
             if !bin || claimed {
                 continue;
@@ -184,147 +212,314 @@ fn process_page(req: serde_json::Value,  conversion_table: &mut HashMap<String, 
             // More in depth checks
             let name: String = auc.get("item_name").unwrap().as_str().unwrap().to_string();
             let lore: String = auc.get("item_lore").unwrap().as_str().unwrap().to_string();
+            let rarity: String = auc.get("tier").unwrap().as_str().unwrap().to_string();
             let category: String = auc.get("category").unwrap().as_str().unwrap().to_string();
             let start: u64 = auc.get("start").unwrap().as_u64().unwrap() / 1000; // convert unix_timestamp from milliseconds to seconds
+            let end: u64 = auc.get("end").unwrap().as_u64().unwrap() / 1000; // convert unix_timestamp from milliseconds to seconds
 
-            if
-            name.contains("Skin") ||
-            lore.contains("Cake") ||
-            lore.contains("Furniture") ||
-            lore.contains("Obtained of Floor") ||
-            BLACKLISTED_ITEMS.iter().any(|i| name.contains(i)) {
+            if category == BLOCKS || category == CONSUMABLES {
+                continue;
+            }
+            // println!("Check 1 {:?}", now.elapsed());
+            if (rarity == "COMMON" || rarity == "UNCOMMON") && category != "accessories" {
                 continue;
             }
 
-            // There are 5 cetegories - 
+            if category == ARMOR || category == WEAPON {
+                if lore.contains("Obtained of Floor") {
+                    continue;
+                }
+            }
+
+            if category == MISC {
+                if rarity == "RARE"
+                    || name.contains("Skin")
+                    || name.contains("Rune")
+                    || lore.contains("Furniture")
+                {
+                    continue;
+                }
+            }
+
+            // There are 5 cetegories -
             // weapons(not stackable), armor(not stackable), accessories (books and dungeon drops), blocks(mostly crap), tools & misc(pets)
             // This way we know what items are stackable and can save time on quantity.
 
-            // Large optimization: Since most time is spend unzipping this nbt data (90%), we will do everything 
+            // Large optimization: Since most time is spend unzipping this nbt data (90%), we will do everything
             //                     we can to reduce how many times it needs to run. The solution is to only provide
-            //                     the price and id field to save time. This shortcut can be performed because of the large 
+            //                     the price and id field to save time. This shortcut can be performed because of the large
             //                     database, id_conversion.json, NAME_VARIATION: ID
-            // 
+            //
             // We only look at lowest bins of all items and only if that item has been up for less than IGNORE_AUCTION_MIN(7)
             // This means any other auctions older than IGNORE_AUCTION_MIN will not be looked at in detail
             // It is these items that we can save compute time on
-
 
             // template
             let mut auction = Auction {
                 id: "".to_string(),
                 seller: auc.get("auctioneer").unwrap().as_str().unwrap().to_string(),
                 uuid: auc.get("uuid").unwrap().as_str().unwrap().to_string(),
-                tier: auc.get("tier").unwrap().as_str().unwrap().to_string(),
-                name: name.clone(),
-                lore: lore,
+                tier: rarity,
+                name: name.to_string(),
+                lore,
                 price: auc.get("starting_bid").unwrap().as_u64().unwrap(),
-                start: start,
+                start,
+                end,
                 pet_data: None,
                 additional_price_data: None,
                 item_bytes: auc.get("item_bytes").unwrap().to_owned(),
+                category,
             };
 
-
-
-            // blocks, misc, armor, weapon, accessories, consumables 
+            // blocks, misc, armor, weapon, accessories, consumables
             // we will skips blocks
-            if (unix_timestamp - start) / 60 > IGNORE_AUCTION_MIN { // if this is a possible flip
-                if category != "blocks" { // non stackable (known quantity/count)
+            if (unix_timestamp - start) / 60 > IGNORE_AUCTION_MIN {
+                // if this is a possible flip
+                // non stackable (known quantity/count)
 
-                    // pets
-                    if name.contains("[Lvl 100]") || name.contains("[Lvl 1]") { 
-                        pet_case(&mut filtered_auctions, &mut auction);
-                        continue;
-                    }
-
-                    // Enchanted books
-                    else if name.contains("Enchanted Book") {
-                        book_case(&mut filtered_auctions, &mut *conversion_table, &mut auction, &auc);
-                        continue;
-                    }
-
-                    // Default case
-                    default_case(&mut filtered_auctions, &mut *conversion_table, &mut auction, &auc);
+                // pets
+                if name.contains("[Lvl 100]") || name.contains("[Lvl 1]") {
+                    pet_case(&mut filtered_auctions, &mut auction);
                     continue;
-
                 }
+                // Enchanted books
+                // else if name.contains("Enchanted Book") {
+                //     book_case(
+                //         &mut filtered_auctions,
+                //         &mut *conversion_table,
+                //         rarity_table,
+                //         &mut auction,
+                //         &auc,
+                //     );
+                //     continue;
+                // }
+
+                // Default case
+                default_case(
+                    &mut filtered_auctions,
+                    &mut *conversion_table,
+                    &mut auction,
+                    &auc,
+                );
                 continue;
             }
             // anything that makes it to this point will be looked at fore lowest bin flips because they have been up for less than IGNORE_AUCTION_MIN
-            
+
             // A pet
             // Formatted as TIER NAME LEVEL PET_ITEM CANDY_USED
             // Ex: RARE TIGER 78 DWARF_TURTLE_SHELMET 0
-            if name.contains("[Lvl 100]") || name.contains("[Lvl 1]") { 
+            if name.contains("[Lvl 100]") || name.contains("[Lvl 1]") {
                 pet_case(&mut filtered_auctions, &mut auction);
                 continue;
             }
-            else if auction.name.contains("Enchanted Book") {
-                book_case(&mut filtered_auctions, conversion_table, &mut auction, &auc);
-                continue;
-            }
+            // unzipping nbt is the highest computation task we perform
+            // therefore we should do as few as possible
+            // we check if the item was recombed or was starred, would it be be a possible flip
+            // if so then we unzip it
             else {
-                // holder = true;
-                let nbt = &to_nbt(serde_json::from_value(auc.get("item_bytes").unwrap().to_owned()).unwrap()).unwrap().i[0];
-                auction.id = nbt.tag.extra_attributes.id.as_ref().unwrap().to_string();
-                auction.price /= nbt.count; // scales price for stacked items
-                auction.additional_price_data = calc_additional_price(nbt);
+                match conversion_table.get(&auction.name) {
+                    Some(e) => {
+                        auction.id = e.to_string();
+                        let mut unzip = false;
+                        for i in 0..=5 {
+                            let id1 = auction.get_extra_data_id(Some(true), Some(i));
+                            let id2 = auction.get_extra_data_id(Some(false), Some(i));
+                            for k in [id1, id2] {
+                                let mut meets_profit_reqs = false;
+                                let mut meets_volume_reqs = false;
+
+                                match avg_lbin_json.get(&k) {
+                                    Some(e) => {
+                                        if e.parse::<i32>().unwrap() - auction.price as i32
+                                            > MIN_PROFIT as i32
+                                        {
+                                            meets_profit_reqs = true;
+                                        }
+                                    }
+                                    // no need to unzip because we wont even be able to compare
+                                    // not stored in the database
+                                    None => {}
+                                }
+                                match volume_json.get(&k) {
+                                    Some(e) => {
+                                        if e.parse::<i32>().unwrap() > MIN_VOLUME as i32 {
+                                            meets_volume_reqs = true;
+                                            if meets_profit_reqs && meets_volume_reqs {
+                                                unzip = true;
+                                            }
+                                            break;
+                                        }
+                                    }
+                                    // no need to unzip because we wont even be able to compare
+                                    // not stored in the database
+                                    None => {}
+                                }
+                            }
+                            break;
+                        }
+                        if unzip {
+                            // holder = true;
+                            let nbt = &to_nbt(
+                                serde_json::from_value(auc.get("item_bytes").unwrap().to_owned())
+                                    .unwrap(),
+                            )
+                            .unwrap()
+                            .i[0];
+                            auction.id = nbt.tag.extra_attributes.id.as_ref().unwrap().to_string();
+                            auction.price /= nbt.count; // scales price for stacked items
+                                                        // println!("{:?}", auction);
+                            auction.additional_price_data = calc_additional_price(nbt);
+                        }
+                    }
+                    None => {
+                        let nbt = &to_nbt(
+                            serde_json::from_value(auc.get("item_bytes").unwrap().to_owned())
+                                .unwrap(),
+                        )
+                        .unwrap()
+                        .i[0];
+                        let new_id = nbt.tag.extra_attributes.id.as_ref().unwrap().to_string();
+                        conversion_table.insert(auction.name.to_string(), new_id.to_string());
+                        auction.id = new_id;
+                        auction.price /= nbt.count; // scales price for stacked items
+                                                    // println!("{:?}", auction);
+                        auction.additional_price_data = calc_additional_price(nbt);
+                    }
+                }
+
                 filtered_auctions.push(auction);
             }
         }
+    } else {
+        println!("Page failed!");
+        // std::process::exit(0);
     }
 
-    else {
-        println!("Page failed!");
-    }
     // println!("Page {}: {}", page_num, holder);
     // println!("{:?}", s.elapsed());
     filtered_auctions
 }
 
-async fn fetch(url: String) -> serde_json::Value{
+async fn fetch(url: String) -> serde_json::Value {
     let req = surf::get(url);
 
     let res = HTTP_CLIENT1.send(req).await;
-        if res.is_ok() {
-            let json = res.unwrap().body_json().await;
-            if json.is_ok() {
-                return json.unwrap();
-            }    
-        }    
-
-    serde_json::Value::Null    
-
-    
-} 
-
-
-// Find flips that fit criteria and write those to JSON for future use.
-pub fn find_flips(auctions: &HashMap<String, Vec<Auction>>, targets: &HashMap<String, Vec<SaleData>>) {
-    let min_profit = 650_000;
-    let min_profit_percentage = 10;
-    let min_volume = 3;
-    // let max_bid = 100_000_000;
-
-    let mut possible_flips: Vec<Flip> = Vec::new();
-    let mut failed_flips: Vec<Flip> = Vec::new();
-    
-    let unix_timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-
-    // Load json database for further comparisson 
-    let data = fs::read_to_string(PATH_TO_SALES).expect("Unable to read file");
-    let mut sales: HashMap<String, Vec<SaleData>> = HashMap::new();
-    if fs::metadata(PATH_TO_SALES).unwrap().len() != 0 {
-        sales = serde_json::from_str(&data).unwrap();
+    if res.is_ok() {
+        let json = res.unwrap().body_json().await;
+        if json.is_ok() {
+            return json.unwrap();
+        }
     }
 
+    serde_json::Value::Null
+}
+
+// fn calculate_enchant_costs(all_auctions: &HashMap<String, Vec<Auction>>, auction: &Auction) -> u64 {
+//     // Load enchant-rarity-table
+//     let enchant_file: String = String::from(PATH_TO_ENCHANT_RARITIES);
+//     let data2 = fs::read_to_string(&enchant_file).expect("Unable to read file");
+//     let mut rarity_table: HashMap<String, String> = HashMap::new();
+//     if fs::metadata(&enchant_file).unwrap().len() != 0 {
+//         rarity_table = serde_json::from_str(&data2).unwrap();
+//     }
+
+//     let mut enchant_costs = 0;
+//     let nbt = &to_nbt(serde_json::from_value(auction.item_bytes.clone()).unwrap())
+//         .unwrap()
+//         .i[0];
+//     match nbt.tag.extra_attributes.enchantments.as_ref() {
+//         Some(enchants) => {
+//             for (k, v) in enchants {
+//                 let enchant_name = format!("{}_{}", k, v);
+//                 // if enchant is not a basic enchant
+//                 if rarity_table.contains_key(&enchant_name) {
+//                     if !all_auctions.contains_key(&enchant_name) {
+//                         continue;
+//                     }
+
+//                     let mut enchant_auctions = all_auctions.get(&enchant_name).unwrap().clone();
+//                     enchant_auctions.sort_by_key(|a| a.price);
+//                     enchant_costs += enchant_auctions[0].price;
+//                 }
+//             }
+//         }
+//         None => {
+//             return 0;
+//         }
+//     }
+
+//     enchant_costs
+// }
+
+#[derive(Deserialize, Serialize, Debug)]
+enum EssenceTable {
+    String(String),
+    Vec(u64),
+}
+// fn calculate_essence_costs(auction: &Auction) -> u64 {
+//     let mut essence_cost: HashMap<String, u64> = HashMap::new();
+//     essence_cost.insert("wither".to_string(), 3000);
+
+//     if !auction.name.contains("✪") {
+//         return 0;
+//     }
+
+//     let nbt = &to_nbt(serde_json::from_value(auction.item_bytes.clone()).unwrap())
+//         .unwrap()
+//         .i[0];
+//     let stars: u8 = match nbt.tag.extra_attributes.dungeon_item_level {
+//         Some(s) => s,
+//         None => 0,
+//     };
+
+//     if stars > 0 && stars <= 5 {
+//         let data = fs::read_to_string(PATH_TO_ESSENCE_TABLE).expect("Unable to read file");
+//         let table: HashMap<String, HashMap<String, Vec<u64>>> =
+//             serde_json::from_str(&data).unwrap();
+//         // "wither": {"NECRON_BLADE HYPERION SCYLLA ASTRAEA VALKYRIE DARK_CLAYMORE": [1, 2, 3, 4, 5],}
+//         for essence_type in table.keys() {
+//             for key in table.get(essence_type).unwrap().keys() {
+//                 if key.contains(&auction.id) {
+//                     let upgrade_amounts: &Vec<u64> =
+//                         table.get(essence_type).unwrap().get(key).unwrap();
+
+//                     let total_essence: u64 = upgrade_amounts[..stars as usize].iter().sum();
+//                     return total_essence * essence_cost.get(essence_type).unwrap();
+//                 }
+//             }
+//         }
+//     }
+
+//     0
+// }
+
+// Find flips that fit criteria and write those to JSON for future use.
+pub fn find_flips(
+    auctions: &HashMap<String, Vec<Auction>>,
+    avg_lbin_json: &HashMap<String, String>,
+    volume_json: &HashMap<String, String>,
+) {
+    let s = Instant::now();
+    // Code block to measure.
+
+    // let pet_splits =  3;
+
+    let mut possible_flips: Vec<Flip> = Vec::new();
+    let mut seen_flips: Vec<String> = vec![];
+
+    let mut failed_flips: Vec<Flip> = Vec::new();
+
+    let unix_timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
     // store pointers to all new auctions
-    let mut new_auctions: Vec<Auction> = vec![];
+    let mut new_auctions: Vec<&Auction> = vec![];
     for (_, auction) in auctions.iter() {
         for auc in auction {
             if (unix_timestamp - auc.start) / 60 < IGNORE_AUCTION_MIN {
-                new_auctions.push(auc.clone());
+                new_auctions.push(auc);
             }
         }
     }
@@ -334,160 +529,233 @@ pub fn find_flips(auctions: &HashMap<String, Vec<Auction>>, targets: &HashMap<St
     // 3) find the lowest bin profit
     // 4) check if there is profit for target value or lowest bin
     // 5) create flip object
-    for auction in new_auctions {
-        // target
-        let nbt = &to_nbt(serde_json::from_value(auction.item_bytes.to_owned()).unwrap()).unwrap().i[0];
-        let target_name: String = match format_name_for_target(nbt) {
-            Some(name) => name,
-            None => "".to_string(),
-        };
-        let avg_target_price = find_avg_target_price(targets, target_name.clone());
-
+    for auction in &new_auctions {
+        // remove pets that are not level 100 or 1
+        if auction.name.contains("Lvl") {
+            if auction.id.contains("-1-") || auction.id.contains("-100-") {
+            } else {
+                continue;
+            }
+        }
+        if auction.price > MAX_BID {
+            continue;
+        }
 
         // lbin - only if this auction is actually the lowest bin
-        let mut similar_auctions = auctions.get(&auction.id).unwrap().clone();
-        similar_auctions.sort_by_key(|f| f.price.clone());
-        let num_similar_auctions = similar_auctions.len();
 
-        if num_similar_auctions < min_volume {
+        // sorting takes way too much time, so we will manually find the 2 lowest items
+        let similar_auctions = auctions.get(&auction.id).unwrap();
+        let num_of_similar_auctions = similar_auctions.len();
+        if num_of_similar_auctions < MIN_SIMILAR_AUCS {
             continue;
         }
 
-        let lowest_bin: &Auction = &similar_auctions[0];
-        let next_lowest_bin: &Auction = &similar_auctions[1];
-        
+        let mut lowest_bin: &Auction = &similar_auctions[0];
+        let mut next_lowest_bin: &Auction = &similar_auctions[1];
+        for auc in similar_auctions {
+            if auc.price < next_lowest_bin.price {
+                next_lowest_bin = auc;
+            }
+            if next_lowest_bin.price < lowest_bin.price {
+                let temp = lowest_bin;
+                lowest_bin = next_lowest_bin;
+                next_lowest_bin = temp;
+            }
+        }
+
         // Guard condition - delete later
         if lowest_bin.price == 0 {
+            auction.print_failed("lowest_bin.price == 0");
             continue;
         }
 
-       
+        // this would mean that the lowest bin is also more than avg_target_price
+        // if next_lowest_bin.price > avg_target_price {
+        //     auction.print_failed("lowest_bin.price > avg_target_price - market manipulation");
+        //     continue;
+        // }
+
+        let auc_avg_lbin: u64 = match avg_lbin_json.get(&auction.get_volume_id()) {
+            Some(x) => x.parse().unwrap(),
+            None => 1000000000,
+        };
+
+        if lowest_bin.price >= auc_avg_lbin {
+            // lowest_bin.print_failed(&format!("{} > {}", lowest_bin.price, auc_avg_lbin));
+            continue;
+        }
 
         // we already know that sales are dropped after 1 week, we can just count all sales to get last_week_volume
-        let volume_last_week = match sales.get(&lowest_bin.id) {
-            Some(x) => x.len(),
-            None => 0
+        // item ids are formatted different internally (more information) - we must extract the actual game id
+        // pets are formatted the same for both sales and targets - so are books
+        let volume_last_week = match volume_json.get(&auction.get_volume_id()) {
+            Some(x) => x.parse().unwrap(),
+            None => 0,
         };
 
         // final checks - guard cases
         if lowest_bin.seller == "1d7a1fd3350546efa653389dfa00ea85"  || // If is my auction
-            lowest_bin.tier != next_lowest_bin.tier { 
+            auction.seller == "1d7a1fd3350546efa653389dfa00ea85"  || // If is my auction
+            volume_last_week < MIN_VOLUME
+        {
+            // auction.print_failed(format!("volume {} {}", sale_name, volume_last_week).as_ref());
             continue;
-        }  
+        }
 
-        // first we check for bin profit
-        if lowest_bin.uuid == auction.uuid { // if this auction really is the lowest bin
-            let mut flip_price: u64 = (next_lowest_bin.price - lowest_bin.price).try_into().unwrap();
+        // first we check for bin profit and
+        if lowest_bin.uuid == auction.uuid {
+            // if this auction really is the lowest bin and different rarity guard condition
+
+            let mut flip_price: u64 = (next_lowest_bin.price - lowest_bin.price)
+                .try_into()
+                .unwrap();
             let taxes = (flip_price as f64 * 0.02 + lowest_bin.price as f64 * 0.01) as u64;
-            flip_price = if taxes < flip_price {flip_price-taxes} else {flip_price};
+            flip_price = if taxes < flip_price {
+                flip_price - taxes
+            } else {
+                flip_price
+            };
             let profit_percentage = (flip_price * 100 / lowest_bin.price) as usize;
-            
-            if flip_price > min_profit && profit_percentage > min_profit_percentage {
-              if lowest_bin.price < avg_target_price {
-                possible_flips.push(Flip {
+
+            if flip_price > MIN_PROFIT && profit_percentage > MIN_PROFIT_PERCENTAGE {
+                // compare agaisnt blacklist
+                let mut remove = false;
+                for i in BLACKLISTED_ITEMS {
+                    if auction.name.contains(i) {
+                        remove = true;
+                        break;
+                    }
+                }
+                if remove {
+                    continue;
+                }
+
+                let estimated_target_price =
+                    match avg_lbin_json.get(&auction.get_extra_data_id(None, None)) {
+                        Some(e) => e.parse().unwrap(),
+                        None => 0,
+                    };
+
+                let flip = Flip {
+                    id: lowest_bin.uuid.to_owned(),
+                    internal_id: auction.get_volume_id(),
                     flip_type: FlipType::LBin,
                     flip_price: flip_price as usize,
                     profit_percentage,
-                    lowest_bin: lowest_bin.clone(),
-                    next_lowest_bin: next_lowest_bin.clone(),
-                    similar_auctions: num_similar_auctions,
+                    lowest_bin: lowest_bin.to_owned(),
+                    next_lowest_bin: next_lowest_bin.to_owned(),
+                    similar_auctions: num_of_similar_auctions,
                     volume_last_week,
-                    estimated_target_price: avg_target_price as usize,
-                });  
-            } 
+                    estimated_target_price,
+                    target_name: "".to_string(),
+                };
+                if !seen_flips.contains(&flip.id) {
+                    seen_flips.push(flip.id.to_string());
+                    possible_flips.push(flip);
+                    continue;
+                }
+                // } else {
+                //     // auction.print_failed("didnt meet min profit lbin");
+                // }
             }
-        }
-
-        // now we check for target
-        if auction.price > avg_target_price {continue;}
-        let mut flip_price: u64 = avg_target_price - auction.price;
-        let taxes = (flip_price as f64 * 0.02 + lowest_bin.price as f64 * 0.01) as u64;
-        flip_price = if taxes < flip_price {flip_price-taxes} else {flip_price};
-        let profit_percentage = (flip_price * 100 / lowest_bin.price) as usize;
-
-        if flip_price > min_profit && profit_percentage > min_profit_percentage && lowest_bin.price < avg_target_price as u64 {
-            possible_flips.push(Flip {
-                flip_type: FlipType::Target,
-                flip_price: flip_price as usize,
-                profit_percentage,
-                lowest_bin: auction.clone(),
-                next_lowest_bin: auction.clone(),
-                similar_auctions: num_similar_auctions,
-                volume_last_week,
-                estimated_target_price: avg_target_price as usize,
-            });
+        } else {
+            // auction.print_failed("didnt meet lbin reqs");
         }
     }
 
+    // make flip
+    for auction in &new_auctions {
+        if seen_flips.contains(&auction.uuid) {
+            continue;
+        }
 
-    // for (item_name, auc) in auctions.iter() {
-    //     let mut auc = auc.clone();
-    //     auc.sort_by_key(|f| f.price.clone());
+        if auction.price > MAX_BID {
+            continue;
+        }
 
-    //     let volume = auc.len();
-        
+        let id = &auction.get_extra_data_id(None, None);
+        if id == &auction.get_volume_id() {
+            continue;
+        }
+        if auction.name.contains("✪") && !auction.is_dungeonized() {
+            println!("{:?}", auction);
+            println!("{:?}", auction.additional_price_data);
+            println!("{}", id);
+            println!("");
+        }
 
-    //     let lowest_bin: &Auction = &auc[0];
-    //     let next_lowest_bin: &Auction = &auc[1];
+        let predicted_value = match avg_lbin_json.get(id) {
+            Some(e) => e.parse().unwrap(),
+            None => 0,
+        };
+        // avg the volume between the recombed version and starred version
+        let volume = match volume_json.get(id) {
+            Some(e) => e.parse().unwrap(),
+            None => 0,
+        };
+        if volume < MIN_VOLUME as i32 {
+            continue;
+        }
+        let flip_price = predicted_value - auction.price as i64;
+        if flip_price < MIN_PROFIT as i64 {
+            continue;
+        }
 
-    //     // Guard condition
-    //     assert!(lowest_bin.price == 0);
+        // check if any other auctions are cheaper and have the same id
+        let mut delete = false;
+        for i in auctions.get(&auction.get_volume_id()).unwrap() {
+            if &i.get_extra_data_id(None, None) == id && i.price < auction.price {
+                delete = true;
+                break;
+            }
+        }
+        if delete {
+            continue;
+        }
 
-    //     let mut flip_price: u64 = (next_lowest_bin.price - lowest_bin.price).try_into().unwrap();
-    //     let taxes = (flip_price as f64 * 0.02 + lowest_bin.price as f64 * 0.01) as u64;
-    //     flip_price = if taxes < flip_price {flip_price-taxes} else {flip_price};
+        // compare agaisnt blacklist
+        let mut remove = false;
+        for i in BLACKLISTED_ITEMS {
+            if auction.name.contains(i) {
+                remove = true;
+                break;
+            }
+        }
+        if remove {
+            continue;
+        }
 
-        // let additional_costs = additional_costs(&auctions, &auc[1].additional_price_data);
+        let lowest_bin = auction.clone().to_owned();
+        let mut next_lowest_bin = auction.clone().to_owned();
+        next_lowest_bin.price = predicted_value as u64;
 
+        // find lbin price
+        let mut cheapest: &Auction = &lowest_bin.clone();
+        for auc in auctions.get(&auction.get_volume_id()).unwrap() {
+            if auc.price < lowest_bin.price {
+                cheapest = auc;
+            }
+        }
 
-        // // Calculating avg raw price
-        // let mut avg_raw_price = 0;
-        // if sales.contains_key(item_name) {
-        //     let prices = sales.get(item_name).unwrap();
-        //     if prices.len() != 0 {
-        //         let mut sum = 0;
-        //         for p in prices {
-        //             sum += p.price;
-        //         }
-        //         avg_raw_price = sum / (prices.len() as u64);
-        //     }
-        // }
+        possible_flips.push(Flip {
+            id: auction.uuid.to_owned(),
+            internal_id: id.to_string(),
+            flip_type: FlipType::Target,
+            flip_price: flip_price as usize,
+            profit_percentage: (flip_price * 100 / auction.price as i64) as usize,
+            lowest_bin,
+            next_lowest_bin,
+            similar_auctions: 0,
+            volume_last_week: volume as usize,
+            estimated_target_price: cheapest.price as usize,
+            target_name: "".to_string(),
+        });
 
-        // we already know that sales are dropped after 1 week
-        // therefore we can just count all sales to get last_week_volume
-    //     let volume_last_week = sales.get(&auc[0].id).unwrap().len();
+        seen_flips.push(auction.uuid.to_string());
+    }
+    println!("Flips found in: {:?}", s.elapsed());
 
-    //     let flip = Flip {
-    //         flip_type: FlipType::LBin,
-    //         flip_price: flip_price.try_into().unwrap(),
-    //         profit_percentage: (flip_price * 100 / lowest_bin.price).try_into().unwrap(),
-    //         lowest_bin: lowest_bin.clone(),
-    //         next_lowest_bin: next_lowest_bin.clone(),
-    //         similar_auctions: volume,
-    //         volume_last_week,
-    //         estimated_target_price: 0,
-    //         // raw_price: if auc[0].price > additional_costs {auc[0].price - additional_costs} else {auc[0].price},
-    //         // avg_raw_price,
-    //         // fail_reason: None,
-    //     };
-
-    //     if (unix_timestamp - flip.lowest_bin.start) / 60 > IGNORE_AUCTION_MIN || // if the auction has been up for more than 7 minutes ignore it (good auctions are sniped within seconds)
-    //         // flip.raw_price > avg_raw_price || // Overpay
-    //         // (flip.lowest_bin.price + flip.flip_price as u64) as f32 / flip.avg_raw_price as f32 > 1.2 || // If profit margin is largley inflated over 20%
-    //         flip.lowest_bin.seller == "1d7a1fd3350546efa653389dfa00ea85"  || // If is my auction
-    //         flip.flip_price < min_profit || 
-    //         flip.profit_percentage < min_profit_percentage ||
-    //         flip.lowest_bin.tier != flip.next_lowest_bin.tier { 
-    //         continue;
-    //     }  
-    //     possible_flips.push(flip);
-        
-    // }
-
-    // If the biggest flip is a reasonable amount recommend it
-    // Otherwise, check if there is a huge amount of volume on any items
-    // If not, recommend the largest flip
-    // possible_flips.sort_by_key(|f| f.flip_price.clone());
+    update_flips(&possible_flips);
     if possible_flips.len() == 0 {
         failed_flips.sort_by_key(|f| f.flip_price.clone());
         if failed_flips.len() > 1 {
@@ -499,26 +767,26 @@ pub fn find_flips(auctions: &HashMap<String, Vec<Auction>>, targets: &HashMap<St
     }
 
     possible_flips.sort_by_key(|f| f.flip_price.clone());
-    if possible_flips[possible_flips.len()-1].flip_price < 3_000_000 {
-        possible_flips.sort_by_key(|f| f.similar_auctions.clone());
-        if possible_flips.len() > 0 && possible_flips[possible_flips.len()-1].similar_auctions > 70 {
-            // open_auction(&possible_flips);
-        }
-        else {
-            possible_flips.sort_by_key(|f| f.flip_price.clone());
-            // open_auction(&possible_flips);
-
-        }
-    }
+    // if possible_flips[possible_flips.len() - 1].flip_price < 3_000_000 {
+    //     possible_flips.sort_by_key(|f| f.similar_auctions.clone());
+    //     if possible_flips.len() > 0
+    //         && possible_flips[possible_flips.len() - 1].similar_auctions > 70
+    //     {
+    //         // open_auction(&possible_flips);
+    //     } else {
+    //         possible_flips.sort_by_key(|f| f.flip_price.clone());
+    //         // open_auction(&possible_flips);
+    //     }
+    // }
     // open_auction(&possible_flips);
-    for flip in possible_flips.clone() {
+    send(format!(
+        "/viewauction {}",
+        possible_flips[possible_flips.len() - 1].id
+    ));
+    for flip in possible_flips {
         flip.print();
     }
-    
-    update_flips(&possible_flips);
-
-    
-    println!("---------------------------------")
+    println!("---------------------------------");
 }
 
 // pub async fn get_total_pages() -> u64 {
@@ -527,144 +795,142 @@ pub fn find_flips(auctions: &HashMap<String, Vec<Auction>>, targets: &HashMap<St
 //     return total_pages;
 // }
 
-pub async fn update_critical_auctions(auctions_hashed: &mut HashMap<String, Vec<Auction>>, seen_ids: &mut Vec<String>) {
-    let mut futures = FuturesUnordered::new();
+pub async fn update_critical_auctions(
+    auctions_hashed: &mut HashMap<String, Vec<Auction>>,
+    seen_ids: &mut HashMap<String, String>,
+    last_update: &mut i32,
+) {
+    // let mut futures = FuturesUnordered::new();
 
     // Load conversions json
-    let file: String = String::from(PATH_TO_CONVERSIONS);
-    let data = fs::read_to_string(&file).expect("Unable to read file");
-    let mut conversion_tables: HashMap<String, String> = HashMap::new();
-    if fs::metadata(&file).unwrap().len() != 0 {
-        conversion_tables = serde_json::from_str(&data).unwrap();
-    }
+    // Load enchant-rarity-table
+    let mut conversion_tables = load_json_file(PATH_TO_CONVERSIONS);
+    let rarity_table = load_json_file(PATH_TO_ENCHANT_RARITIES);
+    let avg_lbins = load_json_file(PATH_TO_AVG_LBIN);
+    let volume_json = load_json_file(PATH_TO_VOLUME);
 
-    let now: Instant = Instant::now();
-
-    futures.push(fetch("https://api.hypixel.net/skyblock/auctions?page=0".to_string()));
-    futures.push(fetch("https://api.hypixel.net/skyblock/auctions?page=1".to_string()));
-    
-    while let Some(res) = futures.next().await {
-        let page = process_page(res, &mut conversion_tables);
-        for auction in page {
-            if seen_ids.contains(&auction.uuid) {
-                continue;
+    // run head calls synchronously and check the page age, once the age is around 60 or 0 then switch to get requests
+    loop {
+        let req = surf::head("https://api.hypixel.net/skyblock/auctions?page=0".to_string());
+        let res = HTTP_CLIENT1.send(req).await;
+        match res {
+            Ok(unwrapped) => match unwrapped.header("age") {
+                Some(age) => {
+                    let age: i32 = age.as_str().parse().unwrap();
+                    if age == 0 || (age > 0 && age < 50) {
+                        break;
+                    }
+                }
+                None => continue,
+            },
+            Err(e) => {
+                println!("Error in api calls {}", e);
+                return;
             }
-            seen_ids.push(auction.uuid.clone());
-            auctions_hashed.entry(auction.id.clone()).or_default().push(auction);
         }
     }
-    println!("\rCritical Auctions Returned in: {:?} ({} auctions)", now.elapsed(), auctions_hashed.len());
 
+    let now = Instant::now();
+    let res = fetch("https://api.hypixel.net/skyblock/auctions?page=0".to_string()).await;
+    *last_update = res.get("lastUpdated").unwrap().as_i64().unwrap() as i32;
+    let now2 = Instant::now();
+    let page = process_page(res, &mut conversion_tables, &avg_lbins, &volume_json);
+
+    for auction in page {
+        if seen_ids.contains_key(&auction.uuid) {
+            continue;
+        }
+        seen_ids.insert(auction.uuid.to_string(), "".to_string());
+        auctions_hashed
+            .entry(auction.id.to_string())
+            .or_default()
+            .push(auction);
+    }
+    println!(
+        "\rCritical Auctions Returned in: {:?} ({} auctions) - processed in ({:?})",
+        now.elapsed(),
+        auctions_hashed.len(),
+        now2.elapsed(),
+    );
+
+    // save new conversion
     let json: String = serde_json::to_string(&conversion_tables).unwrap();
-    fs::write(file, &json).expect("Unable to write file");
-  
+    fs::write(PATH_TO_CONVERSIONS, &json).expect("Unable to write file");
 
+    // save new enchants
+    let json: String = serde_json::to_string(&rarity_table).unwrap();
+    fs::write(PATH_TO_ENCHANT_RARITIES, &json).expect("Unable to write file");
 }
 
-pub async fn update_all_auctions(auctions_hashed: &mut HashMap<String, Vec<Auction>>, seen_ids: &mut Vec<String>) {
+pub async fn update_all_auctions(
+    auctions_hashed: &mut HashMap<String, Vec<Auction>>,
+    seen_ids: &mut HashMap<String, String>,
+) {
     let mut futures = FuturesUnordered::new();
 
-    // Load conversions json
-    let file: String = String::from(PATH_TO_CONVERSIONS);
-    let data = fs::read_to_string(&file).expect("Unable to read file");
-    let mut conversion_tables: HashMap<String, String> = HashMap::new();
-    if fs::metadata(&file).unwrap().len() != 0 {
-        conversion_tables = serde_json::from_str(&data).unwrap();
-    }
+    let mut conversion_tables = load_json_file(PATH_TO_CONVERSIONS);
+    let rarity_table = load_json_file(PATH_TO_ENCHANT_RARITIES);
+    let avg_lbins = load_json_file(PATH_TO_AVG_LBIN);
+    let volume_json = load_json_file(PATH_TO_VOLUME);
 
     // Load previous pages
     // let prev_pages = get_pa
     // println!("\rUpdating Non-essential Auctions!");
     // let now: Instant = Instant::now();
 
-    let page_0 = fetch(String::from("https://api.hypixel.net/skyblock/auctions?page=0")).await;
-    let total_pages: u64 = page_0.get("totalPages").unwrap().as_u64().unwrap();
+    let page_0 = fetch(String::from(
+        "https://api.hypixel.net/skyblock/auctions?page=0",
+    ))
+    .await;
+
+    let total_pages: u64 = match page_0.get("totalPages") {
+        Some(pages) => pages.as_u64().unwrap(),
+        None => 0,
+    };
+
     for page_number in 1..total_pages {
-        futures.push(fetch(format!("https://api.hypixel.net/skyblock/auctions?page={}", page_number)));
+        futures.push(fetch(format!(
+            "https://api.hypixel.net/skyblock/auctions?page={}",
+            page_number
+        )));
     }
-    
+
     // Process page zero since it was already fetched to get totalPages
-    for auction in process_page(page_0, &mut conversion_tables) {
-        auctions_hashed.entry(auction.id.clone()).or_default().push(auction);
+    for auction in process_page(page_0, &mut conversion_tables, &avg_lbins, &volume_json) {
+        auctions_hashed
+            .entry(auction.id.to_string())
+            .or_default()
+            .push(auction);
     }
     while let Some(res) = futures.next().await {
-        let page = process_page(res, &mut conversion_tables);
+        let page = process_page(res, &mut conversion_tables, &avg_lbins, &volume_json);
         for auction in page {
-            if seen_ids.contains(&auction.uuid) {
+            if seen_ids.contains_key(&auction.uuid) {
                 continue;
             }
-            seen_ids.push(auction.uuid.clone());
-            auctions_hashed.entry(auction.id.clone()).or_default().push(auction);
+            seen_ids.insert(auction.uuid.to_string(), "".to_string());
+            auctions_hashed
+                .entry(auction.id.to_string())
+                .or_default()
+                .push(auction);
         }
     }
 
-
     let json: String = serde_json::to_string(&conversion_tables).unwrap();
-    fs::write(file, &json).expect("Unable to write file");
-  
+    fs::write(PATH_TO_CONVERSIONS, &json).expect("Unable to write file");
+
+    // save new enchants
+    let json: String = serde_json::to_string(&rarity_table).unwrap();
+    fs::write(PATH_TO_ENCHANT_RARITIES, &json).expect("Unable to write file");
     // println!("\rNon-essential Auctions Updated in: {:?} ({} auctions)", now.elapsed(), auctions_hashed.len());
 
-    
     // let data = fetch(1).await;
     // let json = data.get("auctions").unwrap().as_array().unwrap();
     // println!("Data: {}", data);
 }
-
-
 
 fn update_flips(flips: &Vec<Flip>) {
     let file: String = String::from(PATH_TO_FLIPS);
     let json: String = serde_json::to_string(flips).unwrap();
     fs::write(file, &json).expect("Unable to write file");
 }
-
-fn get_item_bins(auctions: &HashMap<String, Vec<Auction>>, item_id: String) -> Vec<Auction> {
-    match auctions.get(&item_id) {
-        Some(item_auctions) => {
-            item_auctions.clone().sort_by_key(|f| f.price.clone());
-            return item_auctions.clone();
-        }
-        None => {vec![]}
-    }
-}
-
-fn additional_costs(auctions: &HashMap<String, Vec<Auction>>, price_data: &Option<PriceData>) -> u64 {
-    match price_data {
-        Some(price_data) => {
-            let mut sum: u64 = 0;
-
-            let recomb_price = 6_500_000;
-            let hpb_price = 30_000;
-            let fpb_price = 1_300_000;
-        
-            sum += recomb_price * price_data.recombed;
-            sum += hpb_price * price_data.hpb;
-            sum += fpb_price * price_data.fpb;
-        
-            for item in &price_data.ah_lookups {
-                let bins = get_item_bins(&auctions, item.to_string());
-                if bins.len() > 0 {
-                    sum += bins[0].price;
-                }
-            }
-            return sum;
-        }
-        None => {return 0}
-    }
-}
-
-
-
-
-
-// fn open_auction(flips: &Vec<Flip>) {
-    // if flips.len() > 0 {
-    //     let top_auc = &flips[flips.len()-1];
-    //     let cmd = format!("/viewauction {}", top_auc.lowest_bin.uuid);
-    //     // let current_clipboard = cli_clipboard::get_contents().unwrap();
-
-    //     cli_clipboard::set_contents(cmd.to_owned()).unwrap();
-    //     assert_eq!(cli_clipboard::get_contents().unwrap(), cmd);
-    // }
-// }
-
