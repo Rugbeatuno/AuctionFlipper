@@ -1,5 +1,4 @@
-#[warn(non_snake_case)]
-use AuctionFlipperNode::flipper;
+use auction_flipper::flipper;
 mod server;
 
 #[tokio::main]

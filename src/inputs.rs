@@ -1,31 +1,155 @@
-use rdev::{simulate, Button, EventType, Key, SimulateError};
+use rdev::{listen, simulate, Button, EventType, Key};
 use std::collections::HashMap;
-use std::{thread, time};
+use std::time::{SystemTime, UNIX_EPOCH};
+use std::{fs, thread, time, vec};
 
-use rdev::{listen, Event};
+use crate::constants::{
+    CLOSE_CHAT, CONFIRM_PURCHASE_X, CONFIRM_PURCHASE_Y, DEBUG, PATH_TO_FLIPS,
+    PATH_TO_NEXT_UPDATE_FILE, PURCHASE_X, PURCHASE_Y,
+};
+use crate::structs::{Auction, Flip, FlipType};
+use crate::utils::get_unix_timestamp;
 
-fn callback(event: Event) {
-    match event.name {
-        Some(string) => {
-            // down arrow
-            println!("{}", string);
-            if string == "\u{1f}".to_string() {
-                menu_routine();
-            }
-        }
-        None => (),
+fn load_flips() -> Vec<Flip> {
+    let data = fs::read_to_string(PATH_TO_FLIPS).expect("Unable to read file");
+    let mut flips: Vec<Flip> = vec![];
+    if fs::metadata(PATH_TO_FLIPS).unwrap().len() != 0 {
+        flips = serde_json::from_str(&data).unwrap();
     }
+    flips
+}
+
+fn are_different(flips1: &Vec<Flip>, flips2: &Vec<Flip>) -> bool {
+    if flips1.len() != flips2.len() {
+        return true;
+    }
+    if flips1.len() == 0 && flips2.len() == 0 {
+        return false;
+    }
+    if flips1[0].id == flips2[0].id {
+        return false;
+    } else {
+        return true;
+    }
+}
+
+pub fn file_modified_time_in_seconds(path: &str) -> i32 {
+    fs::metadata(path)
+        .unwrap()
+        .modified()
+        .unwrap()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i32
 }
 
 pub fn init() {
     thread::spawn(|| {
-        if let Err(error) = listen(callback) {
-            println!("Error: {:?}", error)
+        let mut prev_flips: Vec<Flip> = load_flips();
+        prev_flips.sort_by_key(|a| a.flip_price);
+        prev_flips.reverse();
+
+        if prev_flips.len() == 0 {
+            let random_auc = Auction {
+                id: "".to_string(),
+                seller: "".to_string(),
+                uuid: "".to_string(),
+                tier: "".to_string(),
+                name: "".to_string(),
+                lore: "".to_string(),
+                extra: "".to_string(),
+                price: 0,
+                start: 0,
+                end: 0,
+                pet_data: None,
+                additional_price_data: None,
+                item_bytes: serde_json::Value::Null,
+                category: "".to_string(),
+            };
+
+            prev_flips.push(Flip {
+                id: "".to_string(),
+                internal_id: "".to_string(),
+                flip_type: FlipType::LBin,
+                flip_price: 0,
+                profit_percentage: 0,
+                lowest_bin: random_auc.clone(),
+                next_lowest_bin: random_auc.clone(),
+                similar_auctions: 0,
+                volume_last_week: 0,
+                estimated_target_price: 0,
+                target_name: "".to_string(),
+            })
         }
+
+        let mut counter = 0;
+        let mut blocked_until = 0;
+
+        listen(move |event| {
+            let now: i32 = get_unix_timestamp();
+
+            match event.name {
+                Some(string) => {
+                    let mut new_flips = load_flips();
+                    new_flips.sort_by_key(|a| a.flip_price);
+                    new_flips.reverse();
+
+                    if new_flips.len() == 0 {
+                        let last_mod = file_modified_time_in_seconds(PATH_TO_NEXT_UPDATE_FILE);
+                        let time_since: i32 = now - last_mod;
+                        if now >= last_mod && time_since < 3 {
+                            blocked_until = now + 1;
+                        }
+                    }
+
+                    if string == "\u{1f}".to_string() && now > blocked_until {
+                        menu_routine();
+                    }
+                    // see whether the flips are new
+                    // we can take advantage of the fact that we will never see the same auction twice
+                    // there compare the auction ids of the first auctions
+
+                    if are_different(&prev_flips, &new_flips) {
+                        counter = 0;
+                        prev_flips = new_flips.clone();
+                    }
+                    if new_flips.len() > 0 {
+                        if string == "\u{1d}".to_string() {
+                            if counter < new_flips.len() - 1 {
+                                counter += 1;
+                            }
+
+                            send("t".to_string());
+                            std::thread::sleep(std::time::Duration::from_millis(50));
+                            send(format!("/viewauction {}*", &new_flips[counter].id));
+                            println!("Opening auction {}/{}", counter + 1, new_flips.len());
+                        }
+                        if string == "\u{1c}".to_string() {
+                            if counter > 0 {
+                                counter -= 1;
+                            }
+
+                            send("t".to_string());
+                            std::thread::sleep(std::time::Duration::from_millis(50));
+                            send(format!("/viewauction {}*", &new_flips[counter].id));
+                            println!("Opening auction {}/{}", counter + 1, new_flips.len());
+                        }
+                    }
+                }
+                None => (),
+            }
+        })
     });
 }
 
 pub fn send(text: String) {
+    if DEBUG {
+        return;
+    }
+    if text == CLOSE_CHAT {
+        simulate(&EventType::KeyPress(Key::Escape)).unwrap();
+        return;
+    }
     let mut conversions: HashMap<String, Key> = HashMap::new();
     conversions.insert("a".to_string(), Key::KeyA);
     conversions.insert("b".to_string(), Key::KeyB);
@@ -65,13 +189,10 @@ pub fn send(text: String) {
     conversions.insert("0".to_string(), Key::Num0);
     conversions.insert("/".to_string(), Key::Slash);
     conversions.insert(" ".to_string(), Key::Space);
+    conversions.insert("*".to_string(), Key::Return);
 
-    simulate(&EventType::KeyPress(Key::KeyT)).unwrap();
-    thread::sleep(time::Duration::from_millis(45));
-    simulate(&EventType::KeyRelease(Key::KeyT)).unwrap();
-
-    simulate(&EventType::KeyPress(Key::Dot)).unwrap();
-    simulate(&EventType::KeyRelease(Key::Dot)).unwrap();
+    // simulate(&EventType::KeyPress(Key::Dot)).unwrap();
+    // simulate(&EventType::KeyRelease(Key::Dot)).unwrap();
 
     for char in text.chars().into_iter() {
         let char = char.to_string();
@@ -81,28 +202,21 @@ pub fn send(text: String) {
         simulate(&EventType::KeyRelease(key)).unwrap();
         simulate(&EventType::KeyRelease(key)).unwrap();
     }
-    simulate(&EventType::KeyPress(Key::Return)).unwrap();
-    simulate(&EventType::KeyRelease(Key::Return)).unwrap();
 }
 
 fn menu_routine() {
-    let purchase_x: f64 = 721.0;
-    let purchase_y: f64 = 387.0;
-    let confirm_purchase_x: f64 = 650.0;
-    let confirm_purchase_y: f64 = 373.0;
-
     let delay = time::Duration::from_millis(20);
 
     simulate(&EventType::MouseMove {
-        x: purchase_x,
-        y: purchase_y,
+        x: PURCHASE_X,
+        y: PURCHASE_Y,
     })
     .unwrap();
     thread::sleep(delay);
     click();
     simulate(&EventType::MouseMove {
-        x: confirm_purchase_x,
-        y: confirm_purchase_y,
+        x: CONFIRM_PURCHASE_X,
+        y: CONFIRM_PURCHASE_Y,
     })
     .unwrap();
     thread::sleep(delay);
@@ -111,6 +225,6 @@ fn menu_routine() {
 }
 
 fn click() {
-    simulate(&EventType::ButtonPress(Button::Left)).unwrap();
-    simulate(&EventType::ButtonRelease(Button::Left)).unwrap();
+    simulate(&EventType::ButtonPress(Button::Left));
+    simulate(&EventType::ButtonRelease(Button::Left));
 }

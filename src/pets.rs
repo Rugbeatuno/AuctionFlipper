@@ -35,7 +35,7 @@ use crate::structs::*;
 // fn calc_pet_level(xp: u64, tier: String) -> u64 {
 //     let mut offset: HashMap<String, u64> = HashMap::new();
 //     offset.insert("COMMON".to_string(), 0);
-//     offset.insert("UNCOMMON".to_string(), 6);
+//     offset.insert(.to_string(), 6);
 //     offset.insert("RARE".to_string(), 11);
 //     offset.insert("EPIC".to_string(), 16);
 //     offset.insert("LEGENDARY".to_string(), 20);

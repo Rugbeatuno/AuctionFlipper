@@ -1,0 +1,9 @@
+cargo build --release --target=x86_64-pc-windows-gnu
+
+Jack: 
+640, 328
+603, 320
+
+Jonas:
+445, 226
+480, 235

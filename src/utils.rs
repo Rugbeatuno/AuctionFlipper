@@ -1,13 +1,19 @@
 use std::{collections::HashMap, fs};
 // use std::fs;
-use crate::{constants, structs};
+use crate::{
+    constants::{
+        self, COMMON, DIVINE, EPIC, LEGENDARY, MYTHIC, RARE, SPECIAL, SUPREME, UNCOMMON,
+        VERY_SPECIAL,
+    },
+    structs,
+};
 
 use colored::*;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 // const PATH_TO_PAGES: &str = "./src/files/pages.txt";
 
-pub fn prettify_large_nums(num: usize) -> String {
+pub fn prettify_large_nums(num: i32) -> String {
     let mut conversions: HashMap<String, char> = HashMap::new();
     conversions.insert("1".to_string(), 'k');
     conversions.insert("2".to_string(), 'M');
@@ -35,14 +41,16 @@ pub fn prettify_large_nums(num: usize) -> String {
 
 pub fn rarity_to_color(flip: &structs::Flip) -> String {
     match flip.lowest_bin.tier.as_str() {
-        "COMMON" => return flip.lowest_bin.name.truecolor(125, 125, 125).to_string(),
-        "UNCOMMON" => return flip.lowest_bin.name.truecolor(78, 237, 81).to_string(),
-        "RARE" => return flip.lowest_bin.name.truecolor(60, 120, 239).to_string(),
-        "EPIC" => return flip.lowest_bin.name.as_str().magenta().to_string(),
-        "LEGENDARY" => return flip.lowest_bin.name.truecolor(207, 138, 35).to_string(),
-        "MYTHIC" => return flip.lowest_bin.name.truecolor(232, 74, 231).to_string(),
-        "SUPREME" => return flip.lowest_bin.name.truecolor(213, 24, 29).to_string(),
-        "SPECIAL" => return flip.lowest_bin.name.red().to_string(),
+        COMMON => return flip.lowest_bin.name.truecolor(125, 125, 125).to_string(),
+        UNCOMMON => return flip.lowest_bin.name.truecolor(78, 237, 81).to_string(),
+        RARE => return flip.lowest_bin.name.truecolor(60, 120, 239).to_string(),
+        EPIC => return flip.lowest_bin.name.as_str().magenta().to_string(),
+        LEGENDARY => return flip.lowest_bin.name.truecolor(207, 138, 35).to_string(),
+        MYTHIC => return flip.lowest_bin.name.truecolor(232, 74, 231).to_string(),
+        SUPREME => return flip.lowest_bin.name.truecolor(213, 24, 29).to_string(),
+        SPECIAL => return flip.lowest_bin.name.red().to_string(),
+        VERY_SPECIAL => return flip.lowest_bin.name.red().to_string(),
+        DIVINE => return flip.lowest_bin.name.red().to_string(),
         _ => {}
     };
     println!("No Match {}", flip.lowest_bin.tier);
@@ -66,6 +74,13 @@ pub fn rarity_to_color(flip: &structs::Flip) -> String {
 
 // }
 
+pub fn get_unix_timestamp() -> i32 {
+    return SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i32;
+}
+
 pub fn load_json_file(path: &str) -> HashMap<String, String> {
     let data: String = fs::read_to_string(path).expect("Unable to read file");
     let mut json: HashMap<String, String> = HashMap::new();
@@ -76,20 +91,18 @@ pub fn load_json_file(path: &str) -> HashMap<String, String> {
 }
 
 // Uses cloudflare age headers
-pub async fn get_next_api_update() -> u64 {
+pub async fn get_next_api_update() -> i32 {
     let res = constants::HTTP_CLIENT1
         .get("https://api.hypixel.net/skyblock/auctions?page=0")
         .send()
         .await;
 
-    let unix_timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
+    let unix_timestamp: i32 = get_unix_timestamp();
+
     match res {
         Ok(res_unwrap) => match res_unwrap.header("age") {
             Some(age_header) => {
-                let age = age_header.as_str().parse::<u64>().unwrap();
+                let age = age_header.as_str().parse::<i32>().unwrap();
                 println!("Page age: {}", age);
                 // cloudfare doesn't return an exact time in ms, so the +2 accounts for that
                 let age = age % 60;
@@ -120,7 +133,7 @@ pub async fn fetch(url: String) -> serde_json::Value {
     serde_json::Value::Null
 }
 
-pub fn save_next_update(next_update: u64) {
+pub fn save_next_update(next_update: i32) {
     fs::write(constants::PATH_TO_NEXT_UPDATE_FILE, next_update.to_string())
         .expect("Unable to write file");
 }

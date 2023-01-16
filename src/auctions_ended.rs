@@ -4,11 +4,10 @@ use futures::StreamExt;
 use crate::constants::*;
 use crate::structs::*;
 use crate::utils;
+use crate::utils::get_unix_timestamp;
 use crate::utils::{fetch, load_json_file};
-use std::iter::Sum;
 use std::thread::sleep;
 use std::time::Duration;
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::{collections::HashMap, fs};
 
 // Remove auctions in json that are older than the provided time in seconds
@@ -124,25 +123,6 @@ async fn future(url: String, id: String) -> (serde_json::Value, String) {
     (res, id)
 }
 
-async fn get_remaining_fetch() -> i32 {
-    let res = HTTP_CLIENT1
-        .head("https://sky.coflnet.com/api/item/price/POWER_WITHER_BOOTS/history/week")
-        .send()
-        .await;
-
-    match res {
-        Ok(e) => match e.header("x-rate-limit-remaining") {
-            Some(val) => {
-                return val[0].to_string().parse().unwrap();
-            }
-            None => 0,
-        },
-        Err(_) => {
-            return 0;
-        }
-    };
-    0
-}
 // assumming there is no backup, this function is called once a minute
 // and the rate of the api is 100/min
 // so we just have to limit to the first 100 reqs
@@ -176,7 +156,7 @@ async fn call_api(urls: Vec<(String, String)>) -> Vec<(serde_json::Value, String
                 }
                 _ => {
                     if res.0.as_array().is_none() {
-                        println!("PAIN{}", res.0);
+                        println!("FAILED {}", res.1);
                         continue;
                     }
                     returns.push(res);
@@ -188,31 +168,34 @@ async fn call_api(urls: Vec<(String, String)>) -> Vec<(serde_json::Value, String
     returns
 }
 
-fn find_min_avg(val: &serde_json::Value) -> u64 {
-    let mut prices = vec![];
+fn find_min_avg(val: &serde_json::Value) -> i32 {
+    let mut prices: Vec<i32> = vec![];
     for i in val.as_array().unwrap() {
-        prices.push(i.get("min").unwrap().as_f64().unwrap() as u64);
+        prices.push(i.get("min").unwrap().as_f64().unwrap() as i32);
     }
 
     if prices.len() == 0 {
         return 0;
     }
-    // remove the top 20% of sales
+    // remove the top 15% of sales
+    // and the bottom 5% of sales
     prices.sort();
-    let mut length = prices.len();
-    if prices.len() > 10 {
-        length = (prices.len() as f32 * 0.8) as usize;
+    let mut start_idx = 0;
+    let mut end_idx = prices.len();
+    if prices.len() > 30 {
+        start_idx = (prices.len() as f32 * 0.05) as usize;
+        end_idx = (prices.len() as f32 * 0.85) as usize;
     }
-    let prices = &prices[0..length];
-    let sum: u64 = prices.iter().sum();
-    let avg = sum / length as u64;
+    let prices = &prices[start_idx..end_idx];
+    let sum: i32 = prices.iter().sum();
+    let avg = sum / prices.len() as i32;
     return avg;
 }
 
-fn find_volume(val: &serde_json::Value) -> u64 {
+fn find_volume(val: &serde_json::Value) -> i32 {
     let mut vol = 0;
     for i in val.as_array().unwrap() {
-        vol += i.get("volume").unwrap().as_f64().unwrap() as u64;
+        vol += i.get("volume").unwrap().as_f64().unwrap() as i32;
     }
     return vol;
 }
@@ -221,19 +204,49 @@ pub async fn update_additional_price_data(auctions_hashed: &HashMap<String, Vec<
     // open file
     let mut lbin_json = load_json_file(PATH_TO_AVG_LBIN);
     let mut volume_json = load_json_file(PATH_TO_VOLUME);
+    let copy_of_volume_json = load_json_file(PATH_TO_VOLUME_COPY);
 
     // "https://sky.coflnet.com/api/item/price/{}/history/week?Stars={}",
     let mut recomb_keys: Vec<(String, String)> = vec![];
     for i in auctions_hashed.keys() {
         let auc = &auctions_hashed.get(i).unwrap()[0];
+
+        // pets
+        if auc.is_pet() {
+            for k in [1, 100] {
+                for r in [EPIC, LEGENDARY] {
+                    let id = auc.get_extra_data_id(None, None, Some((r, k)));
+                    let copy_volume = match copy_of_volume_json.get(&id) {
+                        Some(e) => e.parse().unwrap(),
+                        None => 0,
+                    };
+                    if !volume_json.contains_key(&id) && copy_volume > 0 {
+                        recomb_keys.push((
+                            format!(
+                                "https://sky.coflnet.com/api/item/price/{}/history/week?PetLevel={}&Rarity={}",
+                                auc.get_volume_id(),
+                                k,
+                                r
+                            ),
+                            id.to_string(),
+                        ));
+                    }
+                }
+            }
+        }
         // all items can be recombed, but we only care about weapons, armor, and accessories
         if auc.category == WEAPON || auc.category == ARMOR || auc.category == ACCESSORIES {
             // we will have to find the id for the base item just recombed
             // then 1-5 stars without recomb
             // and 1-5 stars with recomb
 
-            let id = auc.get_extra_data_id(Some(true), None);
-            if !lbin_json.contains_key(&id) {
+            // all items that can be recombed
+            let id = auc.get_extra_data_id(Some(true), None, None);
+            let copy_volume = match copy_of_volume_json.get(&id) {
+                Some(e) => e.parse().unwrap(),
+                None => 0,
+            };
+            if !volume_json.contains_key(&id) && copy_volume > 0 {
                 recomb_keys.push((
                     format!(
                         "https://sky.coflnet.com/api/item/price/{}/history/week?Recombobulated=true",
@@ -243,10 +256,15 @@ pub async fn update_additional_price_data(auctions_hashed: &HashMap<String, Vec<
                 ));
             }
 
+            // just armor and weapons
             if auc.category != ACCESSORIES {
                 for k in 1..=5 {
-                    let id = auc.get_extra_data_id(Some(true), Some(k));
-                    if !lbin_json.contains_key(&id) {
+                    let id = auc.get_extra_data_id(Some(true), Some(k), None);
+                    let copy_volume = match copy_of_volume_json.get(&id) {
+                        Some(e) => e.parse().unwrap(),
+                        None => 0,
+                    };
+                    if !volume_json.contains_key(&id) && copy_volume > 0 {
                         recomb_keys.push((
                             format!(
                                 "https://sky.coflnet.com/api/item/price/{}/history/week?Recombobulated=true&Stars={}",
@@ -256,8 +274,12 @@ pub async fn update_additional_price_data(auctions_hashed: &HashMap<String, Vec<
                             id.to_string(),
                         ));
                     }
-                    let id = auc.get_extra_data_id(Some(false), Some(k));
-                    if !lbin_json.contains_key(&id) {
+                    let id = auc.get_extra_data_id(Some(false), Some(k), None);
+                    let copy_volume = match copy_of_volume_json.get(&id) {
+                        Some(e) => e.parse().unwrap(),
+                        None => 0,
+                    };
+                    if !volume_json.contains_key(&id) && copy_volume > 0 {
                         recomb_keys.push((
                             format!(
                                 "https://sky.coflnet.com/api/item/price/{}/history/week?Stars={}",
@@ -299,11 +321,16 @@ pub async fn update_volume(auctions_hashed: &HashMap<String, Vec<Auction>>) {
     // Load volume json
     let mut volume_json = load_json_file(PATH_TO_VOLUME);
     let mut lbin_json = load_json_file(PATH_TO_AVG_LBIN);
+    let copy_of_volume_json = load_json_file(PATH_TO_VOLUME_COPY);
 
     let mut keys: Vec<(String, String)> = vec![];
     for i in auctions_hashed.keys() {
         let id = auctions_hashed.get(i).unwrap()[0].get_volume_id();
-        if !volume_json.contains_key(&id) {
+        let copy_volume = match copy_of_volume_json.get(&id) {
+            Some(e) => e.parse().unwrap(),
+            None => 0,
+        };
+        if !volume_json.contains_key(&id) && copy_volume > 0 {
             keys.push((
                 format!("https://sky.coflnet.com/api/item/price/{}/history/week", id),
                 id.to_string(),
@@ -325,10 +352,7 @@ pub async fn update_volume(auctions_hashed: &HashMap<String, Vec<Auction>>) {
 }
 
 pub fn remove_expired_sold_auctions(hashed_auctions: &mut HashMap<String, Vec<Auction>>) {
-    let unix_timestamp: u64 = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
+    let unix_timestamp: i32 = get_unix_timestamp();
 
     // remove auctions that have expired
     for key in hashed_auctions.keys() {
@@ -343,7 +367,7 @@ pub fn remove_expired_sold_auctions(hashed_auctions: &mut HashMap<String, Vec<Au
     // remove auctions that have been sold
 }
 
-pub async fn remove_sold_flips() {
+pub async fn remove_sold_flips(seen_flips: &mut HashMap<String, String>) {
     let data = fs::read_to_string(PATH_TO_FLIPS).expect("Unable to read file");
     let mut flips: Vec<Flip> = vec![];
     if fs::metadata(PATH_TO_FLIPS).unwrap().len() != 0 {
@@ -353,15 +377,17 @@ pub async fn remove_sold_flips() {
         "https://api.hypixel.net/skyblock/auctions_ended",
     ))
     .await;
-    for (idx, flip) in flips.to_owned().iter().enumerate() {
+    for (_, flip) in flips.to_owned().iter().enumerate() {
         let auctions = match req.get("auctions") {
             Some(e) => e.as_array().unwrap().to_owned(),
             None => vec![],
         };
         for auc in auctions {
-            let auc_id = auc.get("auction_id").unwrap();
+            let auc_id = auc.get("auction_id").unwrap().as_str().unwrap().to_string();
             if flip.id == auc_id.to_string() {
-                flips.remove(idx);
+                let index_element = flips.iter().position(|x| x.id == flip.id).unwrap();
+                seen_flips.insert(flip.id.clone(), "".to_string());
+                flips.remove(index_element);
             }
         }
     }
