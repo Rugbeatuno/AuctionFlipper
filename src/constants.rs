@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 use surf;
 
-pub const DEBUG: bool = true;
+pub const DEBUG: bool = false;
 pub const TIMEOUT: i32 = 200;
 // // pub const EXPIRATION_DATE: i32 = 1673239600;
 pub const EXPIRATION_DATE: i32 = 1673946161;
@@ -56,27 +56,34 @@ pub const CONFIRM_PURCHASE_Y: f64 = 373.0;
 // pub const CONFIRM_PURCHASE_X: f64 = 960.0;
 // pub const CONFIRM_PURCHASE_Y: f64 = 470.0;
 
-pub const BLACKLISTED_ITEMS: [&str; 40] = [
+pub const BLACKLISTED_ITEMS: [&str; 39] = [
+    "Frozen Blaze",
+    "Of Divan",
+    "'s Helmet",
+    "Mastiff",
+    "Reaper Mask",
+    "Necromancer Lord Helmet",
+    "Shadow Assassin Helmet",
+    "Bonemerang",
+    "Diver's",
+    "Flaming Fist",
+    "Delirium Necklace",
+    "Aspect of the Void",
     "Ember Rod",
     "Reaper Scyth",
+    "Golden Bonzo",
+    "Golden Scarf",
+    "Wither Helmet",
     "Soul Whip",
-    "Reaper Mask",
+    "Final Destination",
     "Bonzo's Mask",
     "Perfect Helmet",
     "Perfect Chestplate",
     "Perfect Leggings",
     "Perfect Boots",
-    "Flaming Fist",
-    "Delirium Necklace",
-    "Gift the Fish",
-    "Crab Hat of Celebration",
-    "null",
-    "Null",
-    "Shrimp the Fish",
     "Corleonite",
     "Midas",
     "Cake Soul",
-    "Aspect of the Void",
     "Revenant",
     "Tarantula Helmet",
     "Tarantula Chestplate",
@@ -85,18 +92,10 @@ pub const BLACKLISTED_ITEMS: [&str; 40] = [
     "Reaper Chestplate",
     "Reaper Leggings",
     "Reaper Boots",
-    "Final Destination",
-    "Of Divan",
-    "'s Helmet",
-    "Necromancer Lord Helmet",
-    "Shadow Assassin Helmet",
-    "Bonemerang",
-    "Diver's",
     "Horseman's Candle",
-    "Golden Bonzo",
-    "Golden Scarf",
     "Nutcracker",
-    "Wither Helmet",
+    "null",
+    "Null",
 ];
 // pub const BLACKLISTED_TARGETS: [&str; 17] = [
 //     "Of Divan",

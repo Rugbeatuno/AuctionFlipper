@@ -624,9 +624,19 @@ pub fn find_flips(
             }
             continue;
         }
-        // Price: 80.0k -> 950.0k
-        // Est. Value: 98.2k
-        // if next_lowest_bin.price as f32 / auc_avg_lbin as f32 >
+        // Pure Skeleton Soldier Leggings (LBin)
+        // Estimated Profit: +944.0k (2600%)
+        // Price: 36.0k -> 1000.0k
+        // Est. Value: 2.9k
+        if next_lowest_bin.price as f32 / auc_avg_lbin as f32 > 3.0 {
+            if DEBUG {
+                println!(
+                    "next_lowest_bin.price as f32 / auc_avg_lbin > 3 {}",
+                    auction.uuid
+                );
+            }
+            continue;
+        }
 
         // we already know that sales are dropped after 1 week, we can just count all sales to get last_week_volume
         // item ids are formatted different internally (more information) - we must extract the actual game id
@@ -745,8 +755,11 @@ pub fn find_flips(
             continue;
         }
 
+        let is_dungeonized = auction.is_dungeonized();
+        let is_recombed = auction.is_recombed();
+        let has_ultimate_enchant = auction.has_ultimate_enchant();
         // only starred
-        if auction.is_dungeonized() && !auction.is_recombed() && !auction.has_ultimate_enchant() {
+        if is_dungeonized && !is_recombed && !has_ultimate_enchant {
             if auction.count_stars() <= 3 {
                 if DEBUG {
                     println!("only 3 stars {}", auction.uuid);
@@ -756,6 +769,7 @@ pub fn find_flips(
         }
 
         let id = &auction.get_extra_data_id(None, None, None);
+        let volume_id = &auction.get_volume_id();
         // if id == &auction.get_volume_id() {
         //     println!("id == &auction.get_volume_id() {}", auction.uuid);
         //     continue;
@@ -765,6 +779,8 @@ pub fn find_flips(
             Some(e) => e.parse().unwrap(),
             None => 0,
         };
+
+        let enchant_price = auction.add_enchant_price(0);
         predicted_value = auction.add_enchant_price(predicted_value);
 
         // avg the volume between the recombed version and starred version
@@ -785,10 +801,12 @@ pub fn find_flips(
         }
 
         let mut delete = false;
-        let similar_aucs = match auctions.get(&auction.get_volume_id()) {
+        let similar_aucs = match auctions.get(volume_id) {
             Some(e) => e,
             None => continue,
         };
+
+        let mut lowest_ceil: i32 = 2147483647;
         for i in similar_aucs {
             // check if any other auctions are cheaper and have the same id
             if i.uuid == auction.uuid {
@@ -798,40 +816,38 @@ pub fn find_flips(
             // if there are any auctions that have existed for a while that are similar to the auction we are trying to flip
             // for LESS, delete the flip
             // auction.print();
-            if i.price <= predicted_value {
-                // meaning the auction is old (ignored)
-                // if (unix_timestamp - i.start) / 60 > IGNORE_AUCTION_MIN {
-                let mut is_similar = false;
-                if &i.get_extra_data_id(None, None, None) == id {
-                    let auc_has_ultimate_enchant = auction.has_ultimate_enchant();
-                    if auc_has_ultimate_enchant == i.has_ultimate_enchant() {
-                        // compare the price of ultimate enchants
-                        if auc_has_ultimate_enchant {
-                            if auction.add_enchant_price(0) <= i.add_enchant_price(0) {
-                                // auctions are the same, or at least worth the same
-                                // println!("eliminated",);
-                                // i.print();
+            // if i.price <= predicted_value {
+            let mut is_similar = false;
+            if &i.get_extra_data_id(None, None, None) == id {
+                if has_ultimate_enchant == i.has_ultimate_enchant() {
+                    // compare the price of ultimate enchants
+                    if has_ultimate_enchant {
+                        if enchant_price <= i.add_enchant_price(0) {
+                            if i.price <= predicted_value {
                                 is_similar = true;
                             } else {
-                                // println!("saved",);
-                                // i.print();
-                                is_similar = false;
+                                if i.price - auction.price < lowest_ceil {
+                                    lowest_ceil = i.price - auction.price;
+                                }
                             }
                         } else {
-                            // println!("eliminated2",);
-                            // i.print();
-                            is_similar = true;
+                            // comparing auction is above predicted value and our current auction is still worth more, raise our flip price
+                            // if i.price > predicted_value && i.price - auction.price > flip_price {
+                            //     flip_price = i.price - auction.price;
+                            // }
+                            // our auction is worth more than the auction being compared
+                            if i.price <= predicted_value {
+                                is_similar = false;
+                            }
                         }
+                    } else {
+                        is_similar = true;
                     }
                 }
-                if is_similar {
-                    delete = true;
-                    break;
-                }
-                //  else {
-                //     println!("survived",);
-                //     i.print();
-                // }
+            }
+            if is_similar {
+                delete = true;
+                break;
             }
         }
 
@@ -842,9 +858,17 @@ pub fn find_flips(
             continue;
         }
 
+        if lowest_ceil < 2147483647
+            && (lowest_ceil as f32 / predicted_value as f32) < 2.0
+            && id != volume_id
+        {
+            flip_price = lowest_ceil - auction.price;
+            predicted_value = lowest_ceil;
+        }
+
         if flip_price < MIN_PROFIT {
             if DEBUG {
-                println!("flip_price {} < 500,000 {}", flip_price, auction.uuid);
+                println!("flip_price {} < 750000 {}", flip_price, auction.uuid);
             }
             continue;
         }
@@ -883,7 +907,7 @@ pub fn find_flips(
         // Estimated Profit: +1.2M (5%)
         // Price: 20.0M -> 21.2M
         // Est. Target: 13.4M
-        if !auction.is_dungeonized() && auction.is_recombed() && !auction.has_ultimate_enchant() {
+        if is_dungeonized && is_recombed && !has_ultimate_enchant {
             if cheapest.price - predicted_value > 6000000 {
                 if DEBUG {
                     println!("only recomb {}", auction.uuid);
@@ -893,8 +917,8 @@ pub fn find_flips(
         }
 
         // prevent over valuation
-        if !auction.is_dungeonized() && auction.is_recombed() && auction.has_ultimate_enchant() {
-            let ultimate_enchant_cost = auction.add_enchant_price(0);
+        if is_dungeonized && is_recombed && has_ultimate_enchant {
+            let ultimate_enchant_cost = enchant_price;
             if (cheapest.price + 6000000 + ultimate_enchant_cost) < predicted_value {
                 if DEBUG {
                     println!("only recomb/ultimate enchant {}", auction.uuid);

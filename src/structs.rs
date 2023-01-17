@@ -182,7 +182,8 @@ impl Auction {
                 None => return false,
             },
             None => {
-                if self.count_stars() > 0 {
+                let stars = self.count_stars();
+                if stars > 0 {
                     return true;
                 }
                 return false;
@@ -202,13 +203,9 @@ impl Auction {
 
                     for roman_num in ROMAN_NUMERALS_ORDERED {
                         match new_lore.find(roman_num) {
-                            Some(idx) => {
-                                // println!("{} - {}", roman_num, idx);
-                                if idx > 5 {
-                                    continue;
-                                }
+                            Some(_) => {
                                 let enchant_level =
-                                    ROMAN_NUMERALS.get(roman_num).unwrap().clone() as usize;
+                                    *ROMAN_NUMERALS.get(roman_num).unwrap() as usize;
                                 total += ENCHANT_PRICES.get(LORE_TO_KEY.get(key).unwrap()).unwrap()
                                     [enchant_level];
                                 break;

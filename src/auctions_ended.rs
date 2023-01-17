@@ -1,3 +1,4 @@
+use colored::Colorize;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 
@@ -6,6 +7,7 @@ use crate::structs::*;
 use crate::utils;
 use crate::utils::get_unix_timestamp;
 use crate::utils::{fetch, load_json_file};
+use std::hash::Hash;
 use std::thread::sleep;
 use std::time::Duration;
 use std::{collections::HashMap, fs};
@@ -368,6 +370,25 @@ pub fn remove_expired_sold_auctions(hashed_auctions: &mut HashMap<String, Vec<Au
 }
 
 pub async fn remove_sold_flips(seen_flips: &mut HashMap<String, String>) {
+    let known_flippers = HashMap::from([
+        ("a629701e17f04efeaaaa3ec0c9acb8db", "JasperDFH"),
+        ("d496178a9dd54ab18065f0ca05bc074c", "Froste"),
+        ("2d25ddacc1ea4280bef7b1fd4ea4440a", "F_r_o_z_t"),
+        ("c30a0ca2166d4494aefed3adcaa20551", "Officialobama_69"),
+        ("c9c491ff95e14c11927635d426ef4244", "HeroOfRedemption"),
+        ("99ab148c61b146ed9b5d07df7b46984c", "Coflnet"),
+        ("6fa66d4d3a5049b1b7ed90e3209619df", "NotEinfacheEnte"),
+        ("9f53bd6952b84b11b4745c135e082e07", "Anthqny"),
+        ("51b3a8d4e5f44111af0c23267ae49d80", "Jaybot_"),
+        ("1d7a1fd3350546efa653389dfa00ea85", "Mobuls"),
+        ("02a8617e9eaa4662a1e3b87153354159", "Cqrrots"),
+        ("b28039aea41a4f02a30dfdb371696c48", "Lunarv4"),
+        ("f2b62c85fb3647669ece58639f17d8a8", "Bee_bot"),
+        ("80ecc4e30b88471dbf25bccc665ff9f2", "xPando"),
+        ("fb394d1dfb684a73aa9dbeaf13176a70", "Azstarr"),
+        ("37b415acf7ec4af59651bd7b9bf340d7", "Snuppi69"),
+        ("c93ad22c28234e518e55bda8f688df26", "Graytechwarrior"),
+    ]);
     let data = fs::read_to_string(PATH_TO_FLIPS).expect("Unable to read file");
     let mut flips: Vec<Flip> = vec![];
     if fs::metadata(PATH_TO_FLIPS).unwrap().len() != 0 {
@@ -383,7 +404,25 @@ pub async fn remove_sold_flips(seen_flips: &mut HashMap<String, String>) {
             None => vec![],
         };
         for auc in auctions {
+            // track flippers
+            let buyer = auc.get("buyer").unwrap().as_str().unwrap();
             let auc_id = auc.get("auction_id").unwrap().as_str().unwrap().to_string();
+
+            if known_flippers.contains_key(&buyer) {
+                println!(
+                    "{}",
+                    format!(
+                        "{}",
+                        format!(
+                            "{} purchased: {}",
+                            known_flippers.get(&buyer).unwrap(),
+                            auc_id
+                        )
+                        .green()
+                    )
+                );
+            }
+
             if flip.id == auc_id.to_string() {
                 let index_element = flips.iter().position(|x| x.id == flip.id).unwrap();
                 seen_flips.insert(flip.id.clone(), "".to_string());

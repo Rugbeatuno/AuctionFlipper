@@ -94,6 +94,7 @@ pub async fn flipper() {
             auctions_ended::remove_sold_flips(&mut seen_auction_ids).await;
             avg_lbin_json = load_json_file(PATH_TO_AVG_LBIN);
             volume_json = load_json_file(PATH_TO_VOLUME);
+            sleep(Duration::from_secs(1));
         }
         if time_until_update == 6 {
             send('t'.to_string());
