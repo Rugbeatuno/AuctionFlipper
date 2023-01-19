@@ -6,7 +6,7 @@ use surf;
 pub const DEBUG: bool = false;
 pub const TIMEOUT: i32 = 200;
 // // pub const EXPIRATION_DATE: i32 = 1673239600;
-pub const EXPIRATION_DATE: i32 = 1673946161;
+pub const EXPIRATION_DATE: i32 = 1674367602;
 
 // pub const DEBUG: bool = JSON.get("DEBUG").unwrap().parse().unwrap();
 // pub const TIMEOUT: i32 = JSON.get("TIMEOUT").unwrap().to_owned().parse().unwrap();
@@ -24,7 +24,7 @@ pub const MIN_PROFIT: i32 = 750_000;
 // pub const MIN_PROFIT: u64 = 750_000;
 pub const MIN_PROFIT_PERCENTAGE: i32 = 3;
 pub const MIN_SIMILAR_AUCS: i32 = 3;
-pub const MIN_VOLUME: i32 = 300;
+pub const MIN_VOLUME: i32 = 200;
 pub const MAX_BID: i32 = 50_000_000;
 
 pub const CLOSE_CHAT: &str = "ESC";

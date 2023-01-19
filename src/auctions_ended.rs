@@ -425,7 +425,7 @@ pub async fn remove_sold_flips(seen_flips: &mut HashMap<String, String>) {
 
             if flip.id == auc_id.to_string() {
                 let index_element = flips.iter().position(|x| x.id == flip.id).unwrap();
-                seen_flips.insert(flip.id.clone(), "".to_string());
+                seen_flips.insert(flip.id.to_string(), "".to_string());
                 flips.remove(index_element);
             }
         }

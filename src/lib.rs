@@ -79,7 +79,7 @@ pub async fn flipper() {
     //     .unwrap()
     //     .as_secs();
 
-    auction_house::update_all_auctions(&mut auctions_hashed, &mut auction_ids).await;
+    // auction_house::update_all_auctions(&mut auctions_hashed, &mut auction_ids).await;
     let mut next_update = utils::get_next_api_update().await;
     utils::save_next_update(next_update);
     // println!("{:?}", auctions_hashed);

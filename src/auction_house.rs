@@ -3,6 +3,11 @@ use serde_json;
 use futures::{stream::FuturesUnordered, StreamExt};
 use serde_derive::{Deserialize, Serialize};
 use std::result::Result as StdResult;
+
+use std::sync::mpsc;
+use std::sync::mpsc::{Receiver, Sender};
+use std::thread::{self, JoinHandle, Thread};
+
 use std::time::{Duration, Instant};
 use std::{collections::HashMap, fs, str};
 
@@ -242,190 +247,123 @@ fn process_page(
     let unix_timestamp: i32 = get_unix_timestamp();
 
     let mut filtered_auctions: Vec<Auction> = Vec::new();
+    let mut auctions: Vec<Auction> = Vec::new();
 
-    // let mut holder = false;
-    // let page_num = req.get("page").unwrap().as_i32().unwrap();
-    if req.get("auctions") != None {
-        let page = req.get("auctions").unwrap().as_array().unwrap();
-        for auc in page.into_iter() {
-            let bin: bool = auc.get("bin").unwrap().as_bool().unwrap();
-            let claimed: bool = auc.get("claimed").unwrap().as_bool().unwrap();
-
-            // Initial checks to prevent wasting time on already ended or wrong type of auction
-            if !bin || claimed {
-                continue;
-            }
-
-            // More in depth checks
-            let name: String = auc.get("item_name").unwrap().as_str().unwrap().to_string();
-            let lore: String = auc.get("item_lore").unwrap().as_str().unwrap().to_string();
-            let extra: String = auc.get("extra").unwrap().as_str().unwrap().to_string();
-            let rarity: String = auc.get("tier").unwrap().as_str().unwrap().to_string();
-            let category: String = auc.get("category").unwrap().as_str().unwrap().to_string();
-            let start: i32 = (auc.get("start").unwrap().as_i64().unwrap() / 1000) as i32; // convert unix_timestamp from milliseconds to seconds
-            let end: i32 = (auc.get("end").unwrap().as_i64().unwrap() / 1000) as i32; // convert unix_timestamp from milliseconds to seconds
-
-            if category == BLOCKS || category == CONSUMABLES {
-                continue;
-            }
-            // println!("Check 1 {:?}", now.elapsed());
-            if (rarity == COMMON || rarity == UNCOMMON) && category != ACCESSORIES {
-                continue;
-            }
-            // let s = Instant::now();
-            // if category == ARMOR || category == WEAPON {
-            //     if lore.contains("Obtained on Floor") {
-            //         println!("actually removed",);
-            //         continue;
-            //     }
-            // }
-            // println!("{:?}", s.elapsed());
-
-            if category == MISC {
-                if rarity == RARE
-                    || name.contains("Skin")
-                    || name.contains("Rune")
-                    || lore.contains("Furniture")
-                {
-                    continue;
-                }
-            }
-
-            // There are 5 cetegories -
-            // weapons(not stackable), armor(not stackable), accessories (books and dungeon drops), blocks(mostly crap), tools & misc(pets)
-            // This way we know what items are stackable and can save time on quantity.
-
-            // Large optimization: Since most time is spend unzipping this nbt data (90%), we will do everything
-            //                     we can to reduce how many times it needs to run. The solution is to only provide
-            //                     the price and id field to save time. This shortcut can be performed because of the large
-            //                     database, id_conversion.json, NAME_VARIATION: ID
-            //
-            // We only look at lowest bins of all items and only if that item has been up for less than IGNORE_AUCTION_MIN(7)
-            // This means any other auctions older than IGNORE_AUCTION_MIN will not be looked at in detail
-            // It is these items that we can save compute time on
-
-            // template
-            let mut auction = Auction {
-                id: "".to_string(),
-                seller: auc.get("auctioneer").unwrap().as_str().unwrap().to_string(),
-                uuid: auc.get("uuid").unwrap().as_str().unwrap().to_string(),
-                tier: rarity,
-                name: name.to_string(),
-                lore,
-                extra,
-                price: auc.get("starting_bid").unwrap().as_i64().unwrap() as i32,
-                start,
-                end,
-                pet_data: None,
-                additional_price_data: None,
-                item_bytes: auc.get("item_bytes").unwrap().to_owned(),
-                category,
-            };
-
-            // blocks, misc, armor, weapon, accessories, consumables
-            // we will skips blocks
-            if (unix_timestamp - start) / 60 > IGNORE_AUCTION_MIN {
-                // if this is a possible flip
-                // non stackable (known quantity/count)
-
-                // pets
-                if name.contains("[Lvl 100]") || name.contains("[Lvl 1]") {
-                    // pet_case(&mut filtered_auctions, &mut auction);
-                    filtered_auctions.push(auction);
-                    continue;
-                }
-
-                // Default case
-                default_case(
-                    &mut filtered_auctions,
-                    &mut *conversion_table,
-                    &mut auction,
-                    &auc,
-                );
-                continue;
-            }
-            // anything that makes it to this point will be looked at fore lowest bin flips because they have been up for less than IGNORE_AUCTION_MIN
-
-            // A pet
-            // Formatted as TIER NAME LEVEL PET_ITEM CANDY_USED
-            // Ex: RARE TIGER 78 DWARF_TURTLE_SHELMET 0
-            if name.contains("[Lvl 100]") || name.contains("[Lvl 1]") {
-                // pet_case(&mut filtered_auctions, &mut auction);
-                filtered_auctions.push(auction);
-                continue;
-            }
-            // unzipping nbt is the highest computation task we perform
-            // therefore we should do as few as possible
-            // we check if the item was recombed or was starred, would it be be a possible flip
-            // if so then we unzip it
-            else {
-                match conversion_table.get(&auction.name) {
-                    Some(e) => {
-                        auction.id = e.to_string();
-
-                        if auction.price > MAX_BID {
-                            continue;
-                        }
-
-                        let mut unzip = false;
-                        let id = auction.get_extra_data_id(None, None, None);
-                        let mut meets_profit_reqs = false;
-
-                        match avg_lbin_json.get(&id) {
-                            Some(e) => {
-                                if e.parse::<i32>().unwrap() - auction.price > MIN_PROFIT {
-                                    meets_profit_reqs = true;
-                                }
-                            }
-                            // no need to unzip because we wont even be able to compare
-                            // not stored in the database
-                            None => {}
-                        }
-                        match volume_json.get(&id) {
-                            Some(e) => {
-                                if e.parse::<i32>().unwrap() > MIN_VOLUME {
-                                    if meets_profit_reqs {
-                                        unzip = true;
-                                    }
-                                }
-                            }
-                            // no need to unzip because we wont even be able to compare
-                            // not stored in the database
-                            None => {}
-                        }
-                        if unzip || auction.has_ultimate_enchant() {
-                            auction.additional_price_data =
-                                calc_additional_price(None, Some(&auction));
-                        }
-                    }
-                    None => {
-                        let nbt = &to_nbt(
-                            serde_json::from_value(auc.get("item_bytes").unwrap().to_owned())
-                                .unwrap(),
-                        )
-                        .unwrap()
-                        .i[0];
-                        let new_id = nbt.tag.extra_attributes.id.as_ref().unwrap().to_string();
-                        conversion_table.insert(auction.name.to_string(), new_id.to_string());
-                        auction.id = new_id;
-                        auction.price /= nbt.count; // scales price for stacked items
-                                                    // println!("{:?}", auction);
-
-                        auction.additional_price_data = calc_additional_price(Some(nbt), None);
-                    }
-                }
-
-                filtered_auctions.push(auction);
-            }
-        }
-    } else {
-        println!("Internet is too slow. Failed to fetch data. (60s)");
+    if req.get("auctions") == None {
+        println!("Internet is too slow. Failed to fetch data. ({}s)", TIMEOUT);
         std::process::exit(0);
     }
 
-    // println!("Page {}: {}", page_num, holder);
-    // println!("{:?}", s.elapsed());
+    let page = req.get("auctions").unwrap().as_array().unwrap();
+    for auc in page.into_iter() {
+        let bin: bool = auc.get("bin").unwrap().as_bool().unwrap();
+        let claimed: bool = auc.get("claimed").unwrap().as_bool().unwrap();
+
+        // Initial checks to prevent wasting time on already ended or wrong type of auction
+        if !bin || claimed {
+            continue;
+        }
+
+        // More in depth checks
+        let name: String = auc.get("item_name").unwrap().as_str().unwrap().to_string();
+        let lore: String = auc.get("item_lore").unwrap().as_str().unwrap().to_string();
+        let extra: String = auc.get("extra").unwrap().as_str().unwrap().to_string();
+        let rarity: String = auc.get("tier").unwrap().as_str().unwrap().to_string();
+        let category: String = auc.get("category").unwrap().as_str().unwrap().to_string();
+        let start: i32 = (auc.get("start").unwrap().as_i64().unwrap() / 1000) as i32; // convert unix_timestamp from milliseconds to seconds
+        let end: i32 = (auc.get("end").unwrap().as_i64().unwrap() / 1000) as i32; // convert unix_timestamp from milliseconds to seconds
+
+        if category == BLOCKS || category == CONSUMABLES {
+            continue;
+        }
+        // println!("Check 1 {:?}", now.elapsed());
+        if (rarity == COMMON || rarity == UNCOMMON) && category != ACCESSORIES {
+            continue;
+        }
+
+        if category == MISC {
+            if rarity == RARE
+                || name.contains("Skin")
+                || name.contains("Rune")
+                || lore.contains("Furniture")
+            {
+                continue;
+            }
+        }
+
+        // There are 5 cetegories -
+        // weapons(not stackable), armor(not stackable), accessories (books and dungeon drops), blocks(mostly crap), tools & misc(pets)
+        // This way we know what items are stackable and can save time on quantity.
+
+        // Large optimization: Since most time is spend unzipping this nbt data (90%), we will do everything
+        //                     we can to reduce how many times it needs to run. The solution is to only provide
+        //                     the price and id field to save time. This shortcut can be performed because of the large
+        //                     database, id_conversion.json, NAME_VARIATION: ID
+        //
+        // We only look at lowest bins of all items and only if that item has been up for less than IGNORE_AUCTION_MIN(7)
+        // This means any other auctions older than IGNORE_AUCTION_MIN will not be looked at in detail
+        // It is these items that we can save compute time on
+
+        // template
+        let auction = Auction {
+            id: "".to_string(),
+            seller: auc.get("auctioneer").unwrap().as_str().unwrap().to_string(),
+            uuid: auc.get("uuid").unwrap().as_str().unwrap().to_string(),
+            tier: rarity,
+            name: name.to_string(),
+            lore,
+            extra,
+            price: auc.get("starting_bid").unwrap().as_i64().unwrap() as i32,
+            start,
+            end,
+            pet_data: None,
+            additional_price_data: None,
+            item_bytes: auc.get("item_bytes").unwrap().to_owned(),
+            category,
+        };
+
+        auctions.push(auction);
+    }
+
+    fn thread_target(auction: &mut Auction) {
+        let nbt = &to_nbt(serde_json::from_value(auction.item_bytes.to_owned()).unwrap())
+            .unwrap()
+            .i[0];
+        let new_id = nbt.tag.extra_attributes.id.as_ref().unwrap().to_string();
+        auction.id = new_id;
+        auction.price /= nbt.count;
+        auction.additional_price_data = calc_additional_price(Some(nbt), None);
+    }
+
+    // break into 4 threads, each with 250 auctions, speed is expected to be around 10ms
+    let n_threads = 6;
+    let auction_partition = auctions.len() / n_threads;
+    let mut threads = vec![];
+
+    for i in 1..=n_threads {
+        let start = (i - 1) * auction_partition;
+        let mut end = auction_partition * i;
+        if i == n_threads {
+            end = auctions.len();
+        }
+
+        let mut aucs = auctions[start..end].to_vec();
+        let t = thread::spawn(move || {
+            for auc in aucs.iter_mut() {
+                thread_target(auc);
+            }
+            return aucs;
+        });
+        threads.push(t);
+    }
+
+    for t in threads {
+        let mut res = t.join().unwrap();
+        filtered_auctions.append(&mut res);
+    }
+
     filtered_auctions
+    // }
 }
 
 async fn fetch(url: String) -> serde_json::Value {
@@ -897,7 +835,7 @@ pub fn find_flips(
 
         // find lbin price
         let mut cheapest: &Auction = &lowest_bin.clone();
-        for auc in auctions.get(&auction.get_volume_id()).unwrap() {
+        for auc in auctions.get(volume_id).unwrap() {
             if auc.price < cheapest.price {
                 cheapest = auc;
             }
@@ -930,7 +868,7 @@ pub fn find_flips(
         // recombs are worth about 4-5m once applied
         // stars are worth about 5m if 5 stared
         // anything that is more than 10m over lowest bin is not a good flip
-        if !auction.has_ultimate_enchant() && predicted_value - cheapest.price > 10000000 {
+        if !has_ultimate_enchant && predicted_value - cheapest.price > 10000000 {
             if DEBUG {
                 println!("stars and recomb overvalued {}", auction.uuid);
             }

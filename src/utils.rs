@@ -241,7 +241,7 @@ pub fn save_next_update(next_update: i32) {
 //             // }
 
 //             let mut flips = flips.clone();
-//             flips.sort_by_key(|f| f.price.clone());
+//             flips.sort_by_key(|f| f.price.());
 
 //             let ten_percent = flips.len() / 5;
 //             let trimmed_flips = &flips[ten_percent..flips.len() - ten_percent];

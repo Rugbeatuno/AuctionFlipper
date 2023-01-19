@@ -90,6 +90,7 @@ pub fn init() {
 
             match event.name {
                 Some(string) => {
+                    // println!("{}", string);
                     let mut new_flips = load_flips();
                     new_flips.sort_by_key(|a| a.flip_price);
                     new_flips.reverse();
@@ -225,6 +226,6 @@ fn menu_routine() {
 }
 
 fn click() {
-    simulate(&EventType::ButtonPress(Button::Left));
-    simulate(&EventType::ButtonRelease(Button::Left));
+    simulate(&EventType::ButtonPress(Button::Right));
+    simulate(&EventType::ButtonRelease(Button::Right));
 }
